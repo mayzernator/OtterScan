@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Otter mascot">
+<circle cx="128" cy="146" r="48" fill="#6f4526"/><circle cx="384" cy="146" r="48" fill="#6f4526"/>
+<circle cx="128" cy="150" r="25" fill="#d3a67c"/><circle cx="384" cy="150" r="25" fill="#d3a67c"/>
+<ellipse cx="256" cy="262" rx="176" ry="160" fill="#8b5a33"/>
+<ellipse cx="256" cy="330" rx="130" ry="92" fill="#f3e2c8"/>
+<circle cx="186" cy="240" r="27" fill="#24160d"/><circle cx="326" cy="240" r="27" fill="#24160d"/>
+<circle cx="196" cy="230" r="9" fill="#fff"/><circle cx="336" cy="230" r="9" fill="#fff"/>
+<path d="M222 284Q256 266 290 284Q286 316 256 326Q226 316 222 284Z" fill="#3a2416"/>
+<path d="M256 326V346M256 346Q232 374 204 354M256 346Q280 374 308 354" fill="none" stroke="#3a2416" stroke-width="9" stroke-linecap="round"/>
+<g stroke="#b58c67" stroke-width="6" stroke-linecap="round"><path d="M158 322L72 304M154 342L64 346M160 362L78 388M354 322L440 304M358 342L448 346M352 362L434 388"/></g>
+<ellipse cx="184" cy="432" rx="52" ry="34" fill="#6f4526"/><ellipse cx="328" cy="432" rx="52" ry="34" fill="#6f4526"/>
+</svg>
