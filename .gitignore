@@ -9,3 +9,4 @@ logo/*
 logo/otter-globe/*
 !logo/otter-globe/app-icon.png
 !logo/otter-globe/app-icon.svg
+!logo/otter-globe/OtterScan.icon/
