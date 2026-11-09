@@ -8,7 +8,7 @@ swiftc -O -swift-version 5 $SRC Tests/main.swift -o "$TMPDIR/otterscan-tests"
 "$TMPDIR/otterscan-tests"
 rm -rf OtterScan.app
 mkdir -p OtterScan.app/Contents/MacOS OtterScan.app/Contents/Resources
-swiftc -O -swift-version 5 -target $TARGET $SRC ScanModel.swift Views.swift main.swift -o OtterScan.app/Contents/MacOS/OtterScan
+swiftc -O -swift-version 5 -target $TARGET $SRC ScanModel.swift Views.swift Updates.swift main.swift -o OtterScan.app/Contents/MacOS/OtterScan
 I="$TMPDIR/AppIcon.iconset"; rm -rf "$I"; mkdir "$I"
 cp logo/otter-globe/app-icon.png "$I/icon_512x512@2x.png"
 for s in 16 32 64 128 256 512; do sips -z $s $s "$I/icon_512x512@2x.png" --out "$I/icon_${s}x${s}.png" >/dev/null; done

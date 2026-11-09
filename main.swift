@@ -20,6 +20,9 @@ struct OtterScanApp: App {
         }
         .defaultSize(width: 1320, height: 760)
         .commands {
+            CommandGroup(after: .appSettings) {  // right under Settings… in the menu named after the app
+                Button("Check for Updates…") { checkForUpdates() }
+            }
             CommandGroup(replacing: .newItem) {}  // one window is all this app has
             CommandGroup(replacing: .printItem) {
                 Button("Print…") { NotificationCenter.default.post(name: .printList, object: nil) }

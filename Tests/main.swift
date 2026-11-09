@@ -141,6 +141,19 @@ check((try? parseExposure(shodan, status: 500)) == nil, "server error")
 check((try? parseExposure(Data("nope".utf8), status: 200)) == nil, "garbage reply")
 check(publicIP("8.8.8.8") == "8.8.8.8" && publicIP("192.168.1.1") == nil && publicIP("1.1.1.1/../x") == nil, "public address check")
 
+// update check: version order, and GitHub's reply comes off the network too
+check(isNewer("v2.1", than: "2.0") && isNewer("2.10", than: "2.9") && isNewer("2.0.1", than: "2.0"), "newer versions")
+check(!isNewer("2.0", than: "2.0") && !isNewer("v2.0.0", than: "2.0") && !isNewer("1.9", than: "2.0"), "same or older versions")
+check(!isNewer("nightly", than: "2.0") && !isNewer("", than: "2.0"), "a tag that isn't a version is never an update")
+check(versionParts("v2.1-beta") == [2, 1] && versionParts("2..1") == [2], "odd version strings")
+let ownPage = RELEASES_PAGE + "/tag/v2.1"
+let release = Data(#"{"tag_name":"v2.1","html_url":"\#(ownPage)"}"#.utf8)
+check((try? parseRelease(release, status: 200)) == Release(version: "2.1", page: URL(string: ownPage)!), "release reply")
+let elsewhere = Data(#"{"tag_name":"v2.1","html_url":"https://evil.example/download"}"#.utf8)
+check((try? parseRelease(elsewhere, status: 200))?.page.absoluteString == RELEASES_PAGE + "/latest", "foreign link is not offered")
+check((try? parseRelease(Data(#"{"tag_name":"nightly"}"#.utf8), status: 200)) == nil, "tag without a version")
+check((try? parseRelease(Data("nope".utf8), status: 200)) == nil && (try? parseRelease(release, status: 403)) == nil, "bad reply")
+
 // reading the kernel's neighbor tables must not crash, whatever they hold
 _ = arpTable(); _ = ndpTable()
 

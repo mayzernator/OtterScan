@@ -153,6 +153,47 @@ func parseExposure(_ data: Data, status: Int) throws -> Exposure {
 
 func publicIP(_ s: String) -> String? { ipv4(s).flatMap { isPrivate($0) ? nil : s } }
 
+// MARK: updates
+
+let RELEASES_PAGE = "https://github.com/mayzernator/OtterScan/releases"
+let RELEASES_API = "https://api.github.com/repos/mayzernator/OtterScan/releases/latest"
+
+struct Release: Equatable {
+    let version: String
+    let page: URL
+}
+
+// GitHub's answer comes off the network, so the page we offer to open must be on our own releases page.
+func parseRelease(_ data: Data, status: Int) throws -> Release {
+    if status == 404 { throw ScanError("No release has been published yet") }
+    guard status == 200 else { throw ScanError("GitHub answered with error \(status)") }
+    guard let j = try JSONSerialization.jsonObject(with: data) as? [String: Any], let tag = j["tag_name"] as? String,
+          !versionParts(tag).isEmpty else { throw ScanError("GitHub's answer wasn't a release") }
+    let page = (j["html_url"] as? String).flatMap { $0.hasPrefix(RELEASES_PAGE + "/") ? URL(string: $0) : nil }
+    return Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, page: page ?? URL(string: RELEASES_PAGE + "/latest")!)
+}
+
+// "v2.1.3" -> [2, 1, 3]. Anything after the digits of a part ("2.1-beta") is ignored.
+func versionParts(_ s: String) -> [Int] {
+    let s = s.hasPrefix("v") ? String(s.dropFirst()) : s
+    var parts = [Int]()
+    for piece in s.split(separator: ".", omittingEmptySubsequences: false) {
+        guard let n = Int(piece.prefix(while: \.isNumber)) else { break }
+        parts.append(n)
+    }
+    return parts
+}
+
+func isNewer(_ latest: String, than current: String) -> Bool {
+    let a = versionParts(latest), b = versionParts(current)
+    guard !a.isEmpty else { return false }
+    for i in 0..<max(a.count, b.count) {
+        let (x, y) = (i < a.count ? a[i] : 0, i < b.count ? b[i] : 0)
+        if x != y { return x > y }
+    }
+    return false
+}
+
 enum ScanEvent {
     case seen(total: Int, seen: [String: Bool])
     case row(Device)
