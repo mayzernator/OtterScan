@@ -29,7 +29,7 @@ struct FieldOrder: SortComparator, Hashable {
 }
 
 let codeFields: Set<Field> = [.ip, .ports, .mac, .ipv6_local, .ipv6_global]
-let startHidden: Set<Field> = [.ipv6_local, .ipv6_global, .identification, .mdns, .smb, .smb_domain]
+let startHidden: Set<Field> = [.manufacturer, .ipv6_local, .ipv6_global, .identification, .mdns, .smb, .smb_domain]
 
 func symbol(_ kind: String) -> String {
     switch kind {
@@ -363,6 +363,9 @@ struct ContentView: View {
                 }
                 if m.isFavourite(d) { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Favourite") }
             }
+        } else if f == .note {
+            TextField("Add a note", text: Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) }))
+                .textFieldStyle(.plain)
         } else if d.wait.contains(f) && d.text(f).isEmpty {
             Spinner()
         } else if f == .ping {
@@ -486,7 +489,12 @@ struct ContentView: View {
                 }
                 Section {
                     row("Hostname", d.hostname, .hostname, d)
-                    row("Vendor", d.vendor, nil, d)
+                    row("Manufacturer", d.vendor, nil, d)
+                    row("Model", d.model, .model, d)
+                    LabeledContent("Note") {
+                        TextField("Add a note", text: Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) }))
+                            .multilineTextAlignment(.trailing)
+                    }
                     LabeledContent("IPv4 Address") {
                         Button(d.ip) {
                             let https = d.ports.contains { $0.port == 443 } && !d.ports.contains { $0.port == 80 }

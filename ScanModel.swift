@@ -14,6 +14,7 @@ final class ScanModel: ObservableObject {
     @Published var search = ""
     @Published var filters = Filters()
     @Published var favourites = Set(UserDefaults.standard.stringArray(forKey: "favourites") ?? [])
+    @Published var notes = UserDefaults.standard.dictionary(forKey: "notes") as? [String: String] ?? [:]
     @Published var exposure: Exposure?
     @Published var exposureError: String?
     @Published var checkingExposure = false
@@ -185,11 +186,13 @@ final class ScanModel: ObservableObject {
             }
             if kept.count != rows.count || zip(kept, rows).contains(where: { $0.ping != $1.ping }) { rows = kept }
         case .row(var d):
+            d.note = notes[d.key] ?? ""
             d.wait = Field.names.union(mode == .off ? [] : [.ports, .identification])
             if let i = index(d.ip) { rows[i] = d } else { rows.append(d) }
         case .update(var d):
             if let i = index(d.ip) {
                 d.ping = rows[i].ping
+                d.note = notes[d.key] ?? ""
                 rows[i] = d
             }
             done += 1
@@ -225,6 +228,12 @@ final class ScanModel: ObservableObject {
     }
 
     // MARK: actions on a device
+
+    func setNote(_ d: Device, _ text: String) {
+        notes[d.key] = text.isEmpty ? nil : text
+        UserDefaults.standard.set(notes, forKey: "notes")
+        if let i = index(d.ip) { rows[i].note = text }
+    }
 
     func isFavourite(_ d: Device) -> Bool { favourites.contains(d.key) }
 

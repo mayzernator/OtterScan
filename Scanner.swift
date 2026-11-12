@@ -270,10 +270,63 @@ func parsePTR(_ r: [UInt8]) -> String {
 
 func header(_ words: [UInt16]) -> [UInt8] { words.flatMap { [UInt8($0 >> 8), UInt8($0 & 255)] } }
 
-func mdnsName(_ ip: String) -> String {  // ask the device itself for its .local name (unicast mDNS)
-    var q = [UInt8]()
-    for p in ip.split(separator: ".").reversed().map(String.init) + ["in-addr", "arpa"] { q += [UInt8(p.utf8.count)] + Array(p.utf8) }
-    return parsePTR(udp(ip, 5353, header([0, 0, 1, 0, 0, 0]) + q + [0] + header([12, 1])))
+func mdnsQuery(_ ip: String, _ labels: [String], _ type: UInt16) -> [UInt8] {  // unicast mDNS: ask the device itself
+    var q = header([0, 0, 1, 0, 0, 0])
+    for p in labels { q += [UInt8(p.utf8.count)] + Array(p.utf8) }
+    return udp(ip, 5353, q + [0] + header([type, 1]))
+}
+
+func mdnsName(_ ip: String) -> String {  // the device's .local name
+    parsePTR(mdnsQuery(ip, ip.split(separator: ".").reversed().map(String.init) + ["in-addr", "arpa"], 12))
+}
+
+func skipName(_ r: [UInt8], _ start: Int) throws -> Int {
+    var i = start
+    while true {
+        let n = Int(try byte(r, i))
+        if n == 0 { return i + 1 }
+        if n & 0xC0 == 0xC0 { return i + 2 }
+        i += n + 1
+    }
+}
+
+// Every TXT record in a DNS reply as lowercase key -> value. Replies come off the network, so tolerate garbage.
+func parseTXT(_ r: [UInt8]) -> [String: String] {
+    var out = [String: String]()
+    do {
+        func word(_ i: Int) throws -> Int { Int(try byte(r, i)) << 8 | Int(try byte(r, i + 1)) }
+        var i = 12
+        for _ in 0..<(try word(4)) { i = try skipName(r, i) + 4 }
+        for _ in 0..<(try word(6) + word(8) + word(10)) {
+            i = try skipName(r, i)
+            let end = i + 10 + (try word(i + 8))
+            guard end <= r.count else { break }
+            if try word(i) == 16 {
+                var j = i + 10
+                while j < end, j + 1 + Int(r[j]) <= end {
+                    let pair = String(decoding: r[(j + 1)..<(j + 1 + Int(r[j]))], as: UTF8.self)
+                    if let eq = pair.firstIndex(of: "="), out[pair[..<eq].lowercased()] == nil { out[pair[..<eq].lowercased()] = String(pair[pair.index(after: eq)...]) }
+                    j += Int(r[j]) + 1
+                }
+            }
+            i = end
+        }
+    } catch {}
+    return out
+}
+
+// Services whose TXT records usually say what the device is, most reliable first.
+let MODEL_SERVICES = ["_device-info._tcp", "_airplay._tcp", "_ipp._tcp", "_googlecast._tcp"]
+
+// Only asked of devices that already answered mDNS, because each silent service costs a timeout.
+func modelInfo(_ ip: String) -> (maker: String, model: String) {
+    for s in MODEL_SERVICES {
+        let t = parseTXT(mdnsQuery(ip, s.split(separator: ".").map(String.init) + ["local"], 12))
+        guard let id = ["model", "md", "ty", "usb_mdl"].lazy.compactMap({ t[$0] }).first, !id.isEmpty else { continue }
+        let model = friendlyModel(id)
+        return (t["manufacturer"] ?? t["usb_mfg"] ?? (model == id ? "" : "Apple"), model)
+    }
+    return ("", "")
 }
 
 // Apple devices advertise their user-chosen name ("May's MacBook Pro") as a Bonjour instance name; ask for it directly.
@@ -412,7 +465,13 @@ func detail(_ f: Found, _ mode: Mode, _ stop: Stop) throws -> Device {
     (d.smb, d.smbDomain) = smbNames(f.ip)
     d.host = [d.dns, d.mdns, d.smb].first { !$0.isEmpty } ?? ""
     d.hostname = [friendlyName(f.ip), d.host].first { !$0.isEmpty } ?? ""
-    d.kind = deviceKind("\(d.dns) \(d.mdns) \(d.smb) \(d.vendor)")
+    if !d.mdns.isEmpty {
+        let info = modelInfo(f.ip)
+        d.model = info.model
+        // a randomised MAC (iPhones) hides the maker, but the model gives it away
+        if d.vendor.isEmpty || d.vendor == "Private address", !info.maker.isEmpty { d.vendor = cleanVendor(info.maker) }
+    }
+    d.kind = deviceKind("\(d.dns) \(d.mdns) \(d.smb) \(d.vendor) \(d.model)")
     if mode != .off {
         (d.ports, d.identification) = try portInfo(f.ip, mode, stop)
         d.portsChecked = true

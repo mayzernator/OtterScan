@@ -44,6 +44,19 @@ let kinds: [(String, String)] = [
 for (names, kind) in kinds { check(deviceKind(names) == kind, "kind of \(names)") }
 check(basic(Found("10.0.0.1", "?", true)).kind == "", "no clue, no symbol")
 
+// manufacturer and model
+check(cleanVendor("Apple, Inc.") == "Apple" && cleanVendor("Samsung Electronics Co.,Ltd") == "Samsung", "company suffixes dropped")
+check(cleanVendor("Seiko Epson") == "Seiko Epson" && cleanVendor("Inc") == "Inc", "real names kept")
+check(friendlyModel("Mac99,3") == "Mac (Mac99,3)", "apple model family")
+check(friendlyModel("MacBookPro18,4") == "MacBook Pro (14-inch, M1 Max, 2021)" && friendlyModel("iPhone14,2") == "iPhone 13 Pro", "marketing names")
+check(friendlyModel("MacBookPro99,9") == "MacBook Pro (MacBookPro99,9)", "unknown Apple model keeps its family")
+check(friendlyModel("iPhone99,1").hasPrefix("iPhone (") && friendlyModel("AppleTV99,1").hasPrefix("Apple TV"), "iPhone and Apple TV")
+check(friendlyModel("Chromecast") == "Chromecast" && friendlyModel("MacBookish") == "MacBookish", "other models unchanged")
+let txt = "model=Mac14,3"
+let reply: [UInt8] = header([0, 0x8400, 0, 1, 0, 0]) + [1, 0x78, 0] + header([16, 1, 0, 0, UInt16(txt.utf8.count + 1)]) + [UInt8(txt.utf8.count)] + Array(txt.utf8)
+check(parseTXT(reply) == ["model": "Mac14,3"], "TXT record read")
+check(parseTXT(Array(reply.prefix(30))).isEmpty && parseTXT([]).isEmpty, "truncated reply tolerated")
+
 // this Mac's own addresses, for pinning its row
 check(localIPs().contains("127.0.0.1"), "loopback is listed")
 
