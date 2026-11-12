@@ -50,8 +50,11 @@ private func install(_ dmg: URL) {
     let note = NSAlert()
     note.messageText = "Downloading update…"
     note.informativeText = "OtterScan will restart when it's installed."
-    note.addButton(withTitle: "Hide")
+    // Not runModal: a modal session swallows terminate until a click ends it (abortModal only takes effect on the next event).
+    let hide = note.addButton(withTitle: "Hide")
+    hide.target = note.window; hide.action = #selector(NSWindow.orderOut(_:))
     NSApp.activate()
+    note.window.center(); note.window.makeKeyAndOrderFront(nil)
     URLSession.shared.downloadTask(with: dmg) { file, _, error in
         var failure: String?
         if let file {
@@ -63,14 +66,13 @@ private func install(_ dmg: URL) {
             } catch { failure = error.localizedDescription }
         } else { failure = error?.localizedDescription ?? "Download failed" }
         DispatchQueue.main.async {
+            note.window.orderOut(nil)
             if let failure {
-                NSApp.abortModal()
                 let a = NSAlert(); a.messageText = "Couldn't install the update"; a.informativeText = failure
                 a.runModal()
-            } else { NSApp.abortModal(); NSApp.terminate(nil) }  // terminate waits for the open modal, so end it first
+            } else { NSApp.terminate(nil) }
         }
     }.resume()
-    note.runModal()
 }
 
 // Mounts the image, then a detached shell waits for this app to quit, swaps the bundle and reopens it.

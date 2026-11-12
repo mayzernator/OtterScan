@@ -1,6 +1,5 @@
 // OtterScan's window: toolbar, device table, port cards, details panel, status bar.
 import SwiftUI
-import Charts
 import AppKit
 
 let buyMeACoffeeURL: URL? = nil  // set to https://buymeacoffee.com/<handle> once the account exists; nil hides the Settings button
@@ -117,6 +116,47 @@ struct NameEditor: NSViewRepresentable {
         func control(_ c: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
             if sel == #selector(NSResponder.cancelOperation(_:)) { finish(false); return true }
             return false  // Return ends editing normally, which saves
+        }
+    }
+}
+
+// The details panel's title, editable in place: Return or clicking away saves a changed name, Escape reverts.
+struct TitleField: NSViewRepresentable {
+    var title: String
+    var save: (String) -> Void
+
+    func makeNSView(context: Context) -> EndField {
+        let f = EndField(string: title)
+        f.mouseOnly = true
+        f.isBordered = false
+        f.drawsBackground = false
+        f.focusRingType = .none
+        f.font = .boldSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .title3).pointSize)
+        f.lineBreakMode = .byTruncatingTail
+        f.cell?.isScrollable = true
+        f.delegate = context.coordinator
+        return f
+    }
+
+    func updateNSView(_ f: EndField, context: Context) {
+        context.coordinator.parent = self
+        if f.currentEditor() == nil && f.stringValue != title { f.stringValue = title }  // another device was selected
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: TitleField
+        init(_ p: TitleField) { parent = p }
+        func controlTextDidEndEditing(_ n: Notification) {
+            guard let f = n.object as? NSTextField else { return }
+            // unchanged text isn't a rename: saving the display form ("Jos Room") would pin it as a custom name
+            if f.stringValue != parent.title { let s = f.stringValue; DispatchQueue.main.async { self.parent.save(s) } }
+        }
+        func control(_ c: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+            guard sel == #selector(NSResponder.cancelOperation(_:)) else { return false }
+            c.stringValue = parent.title
+            c.window?.makeFirstResponder(nil)
+            return true
         }
     }
 }
@@ -252,6 +292,7 @@ struct GeneralPrefs: View {
     @AppStorage("liveAtLaunch") var liveAtLaunch = true
     @AppStorage("stayOnTop") var stayOnTop = false
     @AppStorage("wrapText") var wrapText = false
+    @AppStorage("friendlyPorts") var friendlyPorts = false
 
     var body: some View {
         Form {
@@ -270,6 +311,7 @@ struct GeneralPrefs: View {
             }
             Toggle("Open details when a device is selected", isOn: $autoDetails)
             Toggle("Wrap text in the device table", isOn: $wrapText)
+            Toggle("Show friendly port names in devices", isOn: $friendlyPorts)
             Toggle("Keep OtterScan on top of other windows", isOn: $stayOnTop)
                 .onChange(of: stayOnTop) { applyStayOnTop() }
             if let buyMeACoffeeURL {
@@ -425,6 +467,7 @@ struct Reactions: ViewModifier {
 struct ContentView: View {
     @EnvironmentObject var m: ScanModel
     @AppStorage("wrapText") var wrapText = false
+    @AppStorage("friendlyPorts") var friendlyPorts = false
     var shown: [Device] {
         let q = m.search.trimmingCharacters(in: .whitespaces).lowercased()
         var r = m.rows.filter { d in
@@ -448,7 +491,6 @@ struct ContentView: View {
             switch m.view {
             case .devices: table(rows)
             case .ports: cards(rows.filter { !$0.ports.isEmpty })
-            case .usage: usageView(rows)
             case .exposed: exposedView
             }
         }
@@ -496,7 +538,6 @@ struct ContentView: View {
             Picker("View", selection: $m.view) {
                 Text("Devices").tag(ViewKind.devices)
                 Text("Ports").tag(ViewKind.ports)
-                Text("Usage").tag(ViewKind.usage)
                 Text("Public").tag(ViewKind.exposed)
             }.pickerStyle(.segmented)
         }
@@ -538,25 +579,6 @@ struct ContentView: View {
             Divider()
         }
         .background(.bar)
-    }
-
-    // MARK: usage
-
-    func usageView(_ rows: [Device]) -> some View {
-        var data = rows.map { d in
-            UsageRow(id: d.ip, name: d.hostname.isEmpty ? d.ip : d.hostname, bytesIn: m.usageTotal[d.ip]?.bytesIn ?? 0, bytesOut: m.usageTotal[d.ip]?.bytesOut ?? 0)
-        }
-        data.sort(using: m.usageSort)
-        return Table(data, selection: $m.selection, sortOrder: $m.usageSort) {
-            TableColumn("Device", value: \.name)
-            TableColumn("Received", value: \.bytesIn) { Text(byteText($0.bytesIn)).monospacedDigit() }
-            TableColumn("Sent", value: \.bytesOut) { Text(byteText($0.bytesOut)).monospacedDigit() }
-            TableColumn("Total", value: \.total) { Text(byteText($0.total)).monospacedDigit() }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            Text("Traffic between this Mac and each device since OtterScan opened. Other devices' traffic with each other or the internet can't be seen from here.")
-                .font(.caption).foregroundStyle(.secondary).padding(8)
-        }
     }
 
     // MARK: public ports
@@ -650,8 +672,8 @@ struct ContentView: View {
             Circle().fill(d.ping ? Color.green : Color.red).frame(width: 9, height: 9)
                 .accessibilityLabel(d.ping ? "Online" : "No ping reply")
         } else if f == .ports {
-            Text(d.ports.map { String($0.port) }.joined(separator: ", ")).font(.system(.callout, design: .monospaced))
-                .lineLimit(1).help(d.text(.ports))
+            Text(d.ports.map { friendlyPorts ? $0.label : String($0.port) }.joined(separator: ", ")).font(.system(.callout, design: .monospaced))
+                .lineLimit(wrapText ? nil : 1).help(d.text(.ports))
         } else {
             Text(d.text(f)).font(codeFields.contains(f) ? .system(.callout, design: .monospaced) : .body).lineLimit(wrapText ? nil : 1)
         }
@@ -763,15 +785,8 @@ struct ContentView: View {
             let busy = m.scanningPorts.contains(d.ip)
             Form {
                 Section {
-                    if m.editingTitle {
-                        NameEditor(text: $m.newName) { save in
-                            if save { m.rename(d.ip, to: m.newName) }
-                            m.editingTitle = false
-                        }.frame(height: 22)
-                    } else {
-                        Text(m.title(d)).font(.title3.bold()).help("Click to rename")
-                            .contentShape(Rectangle()).onTapGesture { m.startRename(d.ip); m.renaming = nil; m.editingTitle = true }
-                    }
+                    TitleField(title: m.title(d)) { m.rename(d.ip, to: $0) }
+                        .frame(height: 24).help("Click to rename")
                     row("Hostname", d.host, .host, d)
                     row("Manufacturer", d.vendor, nil, d)
                     row("Model", d.model, .model, d)
@@ -809,13 +824,6 @@ struct ContentView: View {
                     row("DNS Name", d.dns, .dns, d)
                 }
                 Section {
-                    usageChart(d)
-                } header: {
-                    Text("Traffic With This Mac")
-                } footer: {
-                    Text("Bytes per ~2 s over TCP/UDP between this Mac and this device. Its traffic with anything else isn't visible.")
-                }
-                Section {
                     row("ISP", m.me["isp"] ?? "", nil, d)
                     row("Country", m.me["country"] ?? "", nil, d)
                     row("Public IPv4", m.me["query"] ?? "", nil, d)
@@ -828,24 +836,6 @@ struct ContentView: View {
             .textSelection(.enabled)
         } else {
             Text("Select a device to see its details.").foregroundStyle(.secondary).padding()
-        }
-    }
-
-    @ViewBuilder func usageChart(_ d: Device) -> some View {
-        let samples = m.usage[d.ip] ?? []
-        if samples.count < 2 {
-            Text("Collecting...").foregroundStyle(.secondary)
-        } else {
-            Chart(samples) { s in
-                LineMark(x: .value("Time", s.id), y: .value("Bytes", s.bytesIn), series: .value("Direction", "Received"))
-                    .foregroundStyle(by: .value("Direction", "Received"))
-                LineMark(x: .value("Time", s.id), y: .value("Bytes", s.bytesOut), series: .value("Direction", "Sent"))
-                    .foregroundStyle(by: .value("Direction", "Sent"))
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis { AxisMarks { v in AxisGridLine(); AxisValueLabel { Text(byteText(v.as(Int.self) ?? 0)) } } }
-            .frame(height: 110)
-            LabeledContent("Since launch") { Text("↓ \(byteText(m.usageTotal[d.ip]?.bytesIn ?? 0))  ↑ \(byteText(m.usageTotal[d.ip]?.bytesOut ?? 0))") }
         }
     }
 
@@ -889,4 +879,3 @@ func printList(_ rows: [Device]) {
     NSPrintOperation(view: view, printInfo: info).run()
 }
 
-func byteText(_ n: Int) -> String { ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file) }

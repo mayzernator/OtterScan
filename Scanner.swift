@@ -566,49 +566,6 @@ func events(_ net: Net, _ mode: Mode = .off, live: Bool = false, stop: Stop = St
     }
 }
 
-// MARK: traffic between this Mac and other hosts
-// The only per-device byte counts a Mac can see without root: nettop's per-socket counters. They cover this Mac's own TCP/UDP
-// sockets over IPv4, so traffic between two other devices (or this Mac's non-socket traffic) is invisible.
-
-struct Conn: Equatable { var bytesIn: Int, bytesOut: Int, remote: String }
-
-// nettop CSV, one line per socket: time,"tcp4 local:port<->remote:port",interface,state,bytes_in,bytes_out,...
-func parseNettop(_ csv: String) -> [String: Conn] {
-    var out = [String: Conn]()
-    for line in csv.split(separator: "\n") {
-        let f = line.split(separator: ",", omittingEmptySubsequences: false)
-        guard f.count > 5, f[1].hasPrefix("tcp4 ") || f[1].hasPrefix("udp4 "), let bi = Int(f[4]), let bo = Int(f[5]) else { continue }
-        let ends = f[1].dropFirst(5).components(separatedBy: "<->")
-        guard ends.count == 2, let colon = ends[1].lastIndex(of: ":") else { continue }
-        let remote = String(ends[1][..<colon])
-        if ipv4(remote) != nil { out[String(f[1])] = Conn(bytesIn: bi, bytesOut: bo, remote: remote) }
-    }
-    return out
-}
-
-// Bytes moved since the previous sample, per remote address. shortcut: a socket that closed in between takes its last bytes with it.
-func usageStep(previous: [String: Conn], now: [String: Conn]) -> [String: (bytesIn: Int, bytesOut: Int)] {
-    var out = [String: (bytesIn: Int, bytesOut: Int)]()
-    for (key, c) in now {
-        let p = previous[key]
-        let d = (bytesIn: max(0, c.bytesIn - (p?.bytesIn ?? 0)), bytesOut: max(0, c.bytesOut - (p?.bytesOut ?? 0)))
-        out[c.remote] = (bytesIn: (out[c.remote]?.bytesIn ?? 0) + d.bytesIn, bytesOut: (out[c.remote]?.bytesOut ?? 0) + d.bytesOut)
-    }
-    return out
-}
-
-func nettopSample() -> [String: Conn]? {
-    let p = Process(), pipe = Pipe()
-    p.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
-    p.arguments = ["-n", "-x", "-L", "1"]
-    p.standardOutput = pipe
-    p.standardError = FileHandle.nullDevice
-    guard (try? p.run()) != nil else { return nil }
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    p.waitUntilExit()
-    return p.terminationStatus == 0 ? parseNettop(String(decoding: data, as: UTF8.self)) : nil
-}
-
 // Usage: OtterScan --cli [CIDR] [--ports | --all-ports]   (default: your subnet)
 func runCLI(_ args: [String]) throws {
     prepareProcess()

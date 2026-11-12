@@ -3,7 +3,7 @@ import Foundation
 
 // Plain names, and also the list the "Common" port scan checks.
 let PORTS: [Int: String] = [
-    20: "FTP Data", 21: "FTP File Transfer", 22: "SSH Remote Login", 23: "Telnet", 25: "Email (SMTP)",
+    20: "FTP Data", 21: "FTP", 22: "SSH", 23: "Telnet", 25: "Email (SMTP)",
     53: "DNS", 80: "Website", 88: "Kerberos Login", 110: "Email (POP3)", 111: "RPC", 135: "Windows RPC",
     139: "Windows File Sharing (NetBIOS)", 143: "Email (IMAP)", 389: "Directory (LDAP)", 443: "Secure Website",
     445: "Windows File Sharing", 465: "Email (SMTPS)", 515: "Printer (LPD)", 548: "Mac File Sharing",
