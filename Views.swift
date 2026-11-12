@@ -586,7 +586,7 @@ struct ContentView: View {
             Text(d.ports.map { String($0.port) }.joined(separator: ", ")).font(.system(.callout, design: .monospaced))
                 .lineLimit(1).help(d.text(.ports))
         } else {
-            Text(d.text(f)).font(codeFields.contains(f) ? .system(.callout, design: .monospaced) : .body).lineLimit(1)
+            Text(d.text(f)).font(codeFields.contains(f) ? .system(.callout, design: .monospaced) : .body).lineLimit(wrapText ? nil : 1)
         }
     }
 
