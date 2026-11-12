@@ -82,6 +82,20 @@ struct Port: Identifiable, Equatable {
     var label: String { name == "Unknown" ? String(port) : "\(name) \(port)" }
 }
 
+// Open ports that speak HTTP(S). shortcut: a fixed list, so a web server on an unlisted port needs "Add New URL…".
+let WEB_HTTP: Set<Int> = [80, 3000, 5000, 8080, 8096, 8123, 9090, 32400]
+let WEB_HTTPS: Set<Int> = [443, 5001, 8006, 8443, 10000]
+
+extension Device {
+    // Not scanned yet: guess the two usual ports rather than show nothing.
+    var webURLs: [String] {
+        let open = Set(ports.map(\.port))
+        let http = portsChecked ? WEB_HTTP.intersection(open) : [80]
+        let https = portsChecked ? WEB_HTTPS.intersection(open) : [443]
+        return http.sorted().map { "http://\(ip):\($0)" } + https.sorted().map { "https://\(ip):\($0)" }
+    }
+}
+
 struct V6 { var local = "", global = "" }
 
 struct Found {

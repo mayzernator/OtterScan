@@ -462,7 +462,7 @@ struct ContentView: View {
             Menu("Open in Browser") {
                 Button("Add New URL…") { m.newURL = "http://\(ip):"; m.addURLFor = ip }
                 Divider()
-                ForEach(["http://\(ip):80", "https://\(ip):443"] + (m.urls[ip] ?? []), id: \.self) { u in
+                ForEach(d.webURLs + (m.urls[ip] ?? []), id: \.self) { u in
                     Button(u) { m.openInSafari(u) }
                 }
             }
