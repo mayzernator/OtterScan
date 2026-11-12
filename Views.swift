@@ -1,5 +1,6 @@
 // OtterScan's window: toolbar, device table, port cards, details panel, status bar.
 import SwiftUI
+import Charts
 import AppKit
 
 let buyMeACoffeeURL: URL? = nil  // set to https://buymeacoffee.com/<handle> once the account exists; nil hides the Settings button
@@ -399,6 +400,7 @@ struct ContentView: View {
             switch m.view {
             case .devices: table(rows)
             case .ports: cards(rows.filter { !$0.ports.isEmpty })
+            case .usage: usageView(rows)
             case .exposed: exposedView
             }
         }
@@ -441,6 +443,7 @@ struct ContentView: View {
             Picker("View", selection: $m.view) {
                 Text("Devices").tag(ViewKind.devices)
                 Text("Ports").tag(ViewKind.ports)
+                Text("Usage").tag(ViewKind.usage)
                 Text("Public").tag(ViewKind.exposed)
             }.pickerStyle(.segmented)
         }
@@ -482,6 +485,25 @@ struct ContentView: View {
             Divider()
         }
         .background(.bar)
+    }
+
+    // MARK: usage
+
+    func usageView(_ rows: [Device]) -> some View {
+        var data = rows.map { d in
+            UsageRow(id: d.ip, name: d.hostname.isEmpty ? d.ip : d.hostname, bytesIn: m.usageTotal[d.ip]?.bytesIn ?? 0, bytesOut: m.usageTotal[d.ip]?.bytesOut ?? 0)
+        }
+        data.sort(using: m.usageSort)
+        return Table(data, selection: $m.selection, sortOrder: $m.usageSort) {
+            TableColumn("Device", value: \.name)
+            TableColumn("Received", value: \.bytesIn) { Text(byteText($0.bytesIn)).monospacedDigit() }
+            TableColumn("Sent", value: \.bytesOut) { Text(byteText($0.bytesOut)).monospacedDigit() }
+            TableColumn("Total", value: \.total) { Text(byteText($0.total)).monospacedDigit() }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Text("Traffic between this Mac and each device since OtterScan opened. Other devices' traffic with each other or the internet can't be seen from here.")
+                .font(.caption).foregroundStyle(.secondary).padding(8)
+        }
     }
 
     // MARK: public ports
@@ -731,6 +753,13 @@ struct ContentView: View {
                     row("DNS Name", d.dns, .dns, d)
                 }
                 Section {
+                    usageChart(d)
+                } header: {
+                    Text("Traffic With This Mac")
+                } footer: {
+                    Text("Bytes per ~2 s over TCP/UDP between this Mac and this device. Its traffic with anything else isn't visible.")
+                }
+                Section {
                     row("ISP", m.me["isp"] ?? "", nil, d)
                     row("Country", m.me["country"] ?? "", nil, d)
                     row("Public IPv4", m.me["query"] ?? "", nil, d)
@@ -743,6 +772,24 @@ struct ContentView: View {
             .textSelection(.enabled)
         } else {
             Text("Select a device to see its details.").foregroundStyle(.secondary).padding()
+        }
+    }
+
+    @ViewBuilder func usageChart(_ d: Device) -> some View {
+        let samples = m.usage[d.ip] ?? []
+        if samples.count < 2 {
+            Text("Collecting...").foregroundStyle(.secondary)
+        } else {
+            Chart(samples) { s in
+                LineMark(x: .value("Time", s.id), y: .value("Bytes", s.bytesIn), series: .value("Direction", "Received"))
+                    .foregroundStyle(by: .value("Direction", "Received"))
+                LineMark(x: .value("Time", s.id), y: .value("Bytes", s.bytesOut), series: .value("Direction", "Sent"))
+                    .foregroundStyle(by: .value("Direction", "Sent"))
+            }
+            .chartXAxis(.hidden)
+            .chartYAxis { AxisMarks { v in AxisGridLine(); AxisValueLabel { Text(byteText(v.as(Int.self) ?? 0)) } } }
+            .frame(height: 110)
+            LabeledContent("Since launch") { Text("↓ \(byteText(m.usageTotal[d.ip]?.bytesIn ?? 0))  ↑ \(byteText(m.usageTotal[d.ip]?.bytesOut ?? 0))") }
         }
     }
 
@@ -782,3 +829,5 @@ func printList(_ rows: [Device]) {
     view.frame.size.height = view.layoutManager!.usedRect(for: view.textContainer!).height + 20
     NSPrintOperation(view: view, printInfo: info).run()
 }
+
+func byteText(_ n: Int) -> String { ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file) }
