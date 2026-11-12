@@ -15,6 +15,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         done([.banner, .list])
     }
 
+    // Clicking a notification brings the app forward and opens that device's details.
+    func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse,
+                                withCompletionHandler done: @escaping () -> Void) {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        if let ip = r.notification.request.content.userInfo["ip"] as? String {
+            NotificationCenter.default.post(name: .openDevice, object: ip)
+        }
+        done()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 }
 

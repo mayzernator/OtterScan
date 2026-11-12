@@ -459,6 +459,11 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .printList)) { _ in
             printList(m.view == .ports ? shown.filter { !$0.ports.isEmpty } : shown)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openDevice)) { n in
+            m.view = .devices
+            m.selection = n.object as? String
+            m.showDetails = true
+        }
         .searchable(text: $m.search, prompt: "Search")
         .navigationTitle("OtterScan")
         .navigationSubtitle(m.range)
@@ -811,7 +816,10 @@ struct ContentView: View {
     }
 }
 
-extension Notification.Name { static let printList = Notification.Name("printList") }
+extension Notification.Name {
+    static let printList = Notification.Name("printList")
+    static let openDevice = Notification.Name("openDevice")  // object: the device's IP
+}
 
 // Prints the rows on screen (after search and filters) as a plain monospaced table, landscape.
 func printList(_ rows: [Device]) {

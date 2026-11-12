@@ -363,7 +363,7 @@ func modelInfo(_ ip: String) -> (maker: String, model: String) {
     return ("", "")
 }
 
-// Apple devices advertise their user-chosen name ("May's MacBook Pro") as a Bonjour instance name; ask for it directly.
+// Apple devices advertise their user-chosen name ("Alex's MacBook Pro") as a Bonjour instance name; ask for it directly.
 func friendlyName(_ ip: String) -> String {
     for svc in ["_companion-link", "_airplay"] {
         var q = [UInt8]()
