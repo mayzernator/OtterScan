@@ -28,6 +28,46 @@ struct FieldOrder: SortComparator, Hashable {
     }
 }
 
+// A text box that sits over the name in the Device column: Return or clicking away saves, Escape cancels.
+// AppKit rather than SwiftUI's TextField, which can't take focus and select its text on appearing without @FocusState.
+struct NameEditor: NSViewRepresentable {
+    @Binding var text: String
+    var done: (Bool) -> Void  // true to save
+
+    func makeNSView(context: Context) -> NSTextField {
+        let f = NSTextField(string: text)
+        f.alignment = .center
+        f.delegate = context.coordinator
+        DispatchQueue.main.async {
+            f.window?.makeFirstResponder(f)
+            f.currentEditor()?.selectAll(nil)
+        }
+        return f
+    }
+
+    func updateNSView(_ f: NSTextField, context: Context) { context.coordinator.parent = self }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: NameEditor
+        private var finished = false
+        init(_ p: NameEditor) { parent = p }
+
+        private func finish(_ save: Bool) {
+            guard !finished else { return }
+            finished = true
+            DispatchQueue.main.async { self.parent.done(save) }  // not mid-update
+        }
+
+        func controlTextDidChange(_ n: Notification) { parent.text = (n.object as? NSTextField)?.stringValue ?? parent.text }
+        func controlTextDidEndEditing(_ n: Notification) { finish(true) }
+        func control(_ c: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+            if sel == #selector(NSResponder.cancelOperation(_:)) { finish(false); return true }
+            return false  // Return ends editing normally, which saves
+        }
+    }
+}
+
 let codeFields: Set<Field> = [.ip, .ports, .mac, .ipv6_local, .ipv6_global]
 let startHidden: Set<Field> = [.manufacturer, .ipv6_local, .ipv6_global, .identification, .mdns, .smb, .smb_domain]
 
@@ -323,11 +363,6 @@ struct ContentView: View {
         .searchable(text: $m.search, prompt: "Search")
         .navigationTitle("OtterScan")
         .navigationSubtitle(m.range)
-        .alert("Edit Hostname", isPresented: Binding(get: { m.renaming != nil }, set: { if !$0 { m.renaming = nil } })) {
-            TextField("Hostname", text: $m.newName)
-            Button("Save") { if let ip = m.renaming { m.rename(ip, to: m.newName) } }
-            Button("Cancel", role: .cancel) {}
-        }
         .alert("Add New URL", isPresented: addURLShown) {
             TextField("URL", text: $m.newURL)
             Button("Open") { if let ip = m.addURLFor { m.addURL(m.newURL, for: ip) } }
@@ -359,8 +394,8 @@ struct ContentView: View {
             }.pickerStyle(.segmented)
         }
         ToolbarItem {
-            Button { if let ip = m.selection { m.startRename(ip) } } label: { Label("Edit Hostname", systemImage: "pencil") }
-                .keyboardShortcut("r").disabled(m.selection == nil).help("Edit hostname (⌘R)")
+            Button { if let ip = m.selection { m.startRename(ip) } } label: { Label("Edit Name", systemImage: "pencil") }
+                .keyboardShortcut("r").disabled(m.selection == nil).help("Edit name (⌘R)")
         }
         ToolbarItem {
             Button { m.showDetails.toggle() } label: { Label("Details", systemImage: "sidebar.trailing") }
@@ -465,7 +500,12 @@ struct ContentView: View {
     }
 
     @ViewBuilder func cell(_ d: Device, _ f: Field) -> some View {
-        if f == .hostname {
+        if f == .hostname && m.renaming == d.ip {
+            NameEditor(text: $m.newName) { save in
+                if save { m.rename(d.ip, to: m.newName) }
+                m.renaming = nil
+            }
+        } else if f == .hostname {
             HStack(spacing: 8) {
                 Image(systemName: symbol(d.kind)).foregroundStyle(.tint).frame(width: 18).accessibilityLabel(d.kind.isEmpty ? "device" : d.kind)
                 if d.wait.contains(.hostname) && d.hostname.isEmpty {
