@@ -399,7 +399,9 @@ func vendor(_ mac: String) -> String {
 
 // Device column text: no ".local", hyphens as spaces ("Mays-MacBook-Pro.local" -> "Mays MacBook Pro"). Display only.
 func displayName(_ s: String) -> String {
-    (s.hasSuffix(".local") ? String(s.dropLast(6)) : s).replacingOccurrences(of: "-", with: " ")
+    var n = s.hasSuffix(".") ? String(s.dropLast()) : s  // mDNS names can end in "local."
+    if n.lowercased().hasSuffix(".local") { n = String(n.dropLast(6)) }
+    return n.replacingOccurrences(of: "-", with: " ")
 }
 
 func basic(_ f: Found) -> Device {  // what we know instantly; names can take 30s to time out

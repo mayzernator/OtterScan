@@ -116,7 +116,7 @@ final class ScanModel: ObservableObject {
 
     // What the Device column shows; a custom name is shown exactly as typed.
     func title(_ d: Device) -> String {
-        d.hostname.isEmpty ? d.ip : names[d.key] != nil ? d.hostname : displayName(d.hostname)
+        d.hostname.isEmpty ? d.ip : displayName(d.hostname)  // custom names too: older renames saved the raw "Name-x.local"
     }
 
     private func cellWidth(_ d: Device, _ f: Field) -> CGFloat {
@@ -286,7 +286,7 @@ final class ScanModel: ObservableObject {
 
     func startRename(_ ip: String) {
         guard let d = device(ip) else { return }
-        newName = d.hostname.isEmpty ? d.ip : d.hostname  // what the cell shows, so an IP-only device starts with its IP
+        newName = title(d)  // what the cell shows, so an IP-only device starts with its IP
         renaming = ip
     }
 

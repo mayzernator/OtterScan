@@ -7,6 +7,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         prepareProcess()
         DispatchQueue.global().async { askForLocalNetwork() }  // so macOS asks for Local Network access right away
         if Bundle.main.bundleIdentifier != nil { UNUserNotificationCenter.current().delegate = self }  // asks for nothing yet
+        #if FAKE_UPDATE
+        if ProcessInfo.processInfo.environment["FAKE_AUTO"] != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { checkForUpdates() } }
+        #endif
     }
 
     // macOS hides an app's notifications while it is in front; show ours anyway.

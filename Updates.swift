@@ -4,6 +4,14 @@ import AppKit
 private var checking = false  // main thread only; stops a second click from stacking a second alert
 
 func checkForUpdates() {
+    #if FAKE_UPDATE  // test build only (SWIFTFLAGS=-DFAKE_UPDATE ./build.sh): offers the DMG at URL $FAKE_DMG as version 99.0
+    if let dmg = ProcessInfo.processInfo.environment["FAKE_DMG"] {
+        if ProcessInfo.processInfo.environment["FAKE_AUTO"] != nil {  // press Download by itself: tests no click is needed after it
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { NSApp.stopModal(withCode: .alertFirstButtonReturn) }
+        }
+        return showUpdateResult(.success(Release(version: "99.0", page: URL(string: RELEASES_PAGE)!, dmg: URL(string: dmg)!)))
+    }
+    #endif
     guard !checking, let url = URL(string: RELEASES_API) else { return }
     checking = true
     var req = URLRequest(url: url)
@@ -53,6 +61,7 @@ private func install(_ dmg: URL) {
     // Not runModal: a modal session swallows terminate until a click ends it (abortModal only takes effect on the next event).
     let hide = note.addButton(withTitle: "Hide")
     hide.target = note.window; hide.action = #selector(NSWindow.orderOut(_:))
+    note.layout()  // NSAlert only lays itself out inside runModal; shown directly its window is the raw template
     NSApp.activate()
     note.window.center(); note.window.makeKeyAndOrderFront(nil)
     URLSession.shared.downloadTask(with: dmg) { file, _, error in

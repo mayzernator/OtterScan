@@ -10,6 +10,7 @@ check(vendor("?") == "", "unknown mac has no vendor")
 check(vendor("8a:81:16:75:ee:f8") == "Private address", "locally administered bit")
 check(displayName("Mays-MacBook-Pro.local") == "Mays MacBook Pro", "device name display")
 check(displayName("192.168.1.5") == "192.168.1.5", "IP left alone")
+check(displayName("Mays-iPhone.local.") == "Mays iPhone", "trailing-dot mDNS name")
 check(checksum(ECHO) == 0, "ping packet checksum")
 
 // PTR reply: header, question "x.", answer pointing at question name, rdata "host.local"
