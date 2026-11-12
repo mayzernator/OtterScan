@@ -3,6 +3,7 @@ OtterScan.app/
 dist/
 __pycache__/
 issues.txt
+RELEASING.md
 # logo exploration; the build only needs the final icon
 logo/*
 !logo/otter-globe/
