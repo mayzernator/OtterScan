@@ -2,7 +2,7 @@
 # Builds dist/OtterScan-<version>.dmg: the drag-to-Applications installer. Needs only Xcode Command Line Tools.
 set -e
 cd "$(dirname "$0")"
-[ -d OtterScan.app ] || ./build.sh
+./build.sh  # always rebuild: a leftover app would ship a stale version
 V="$(plutil -extract CFBundleShortVersionString raw OtterScan.app/Contents/Info.plist)"
 OUT="dist/OtterScan-$V.dmg"
 T="$(mktemp -d)"; trap 'hdiutil detach "/Volumes/OtterScan" -quiet 2>/dev/null; rm -rf "$T"' EXIT
