@@ -85,7 +85,7 @@ func dropdown<T: Hashable>(_ title: String, _ value: Binding<T>, _ options: [(St
         }.pickerStyle(.inline).labelsHidden()
         if let action { Divider(); Button(action.title, action: action.run).disabled(!action.enabled) }
     } label: {
-        Text("\(title): \(options.first { $0.1 == value.wrappedValue }?.0 ?? "")")
+        Text("\(title): \(options.first { $0.1 == value.wrappedValue }?.0 ?? "")").padding(.horizontal, 6)
     }
     .fixedSize()
 }
