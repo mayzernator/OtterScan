@@ -397,6 +397,11 @@ func vendor(_ mac: String) -> String {
     return (Int(String(mac.dropFirst().prefix(1)), radix: 16) ?? 0) & 2 != 0 ? "Private address" : ""  // locally-administered bit
 }
 
+// Device column text: no ".local", hyphens as spaces ("Mays-MacBook-Pro.local" -> "Mays MacBook Pro"). Display only.
+func displayName(_ s: String) -> String {
+    (s.hasSuffix(".local") ? String(s.dropLast(6)) : s).replacingOccurrences(of: "-", with: " ")
+}
+
 func basic(_ f: Found) -> Device {  // what we know instantly; names can take 30s to time out
     let v = vendor(f.mac)
     return Device(ip: f.ip, mac: f.mac, ping: f.ping, ipv6Local: f.v6.local, ipv6Global: f.v6.global, vendor: v, kind: deviceKind(v))

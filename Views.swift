@@ -205,6 +205,7 @@ struct GeneralPrefs: View {
     @AppStorage("autoDetails") var autoDetails = true
     @AppStorage("liveAtLaunch") var liveAtLaunch = true
     @AppStorage("stayOnTop") var stayOnTop = false
+    @AppStorage("wrapText") var wrapText = false
 
     var body: some View {
         Form {
@@ -222,6 +223,7 @@ struct GeneralPrefs: View {
                 ForEach([5.0, 10, 30, 60], id: \.self) { Text("\(Int($0)) seconds").tag($0) }
             }
             Toggle("Open details when a device is selected", isOn: $autoDetails)
+            Toggle("Wrap text in the device table", isOn: $wrapText)
             Toggle("Keep OtterScan on top of other windows", isOn: $stayOnTop)
                 .onChange(of: stayOnTop) { applyStayOnTop() }
             if let buyMeACoffeeURL {
@@ -376,6 +378,7 @@ struct Reactions: ViewModifier {
 
 struct ContentView: View {
     @EnvironmentObject var m: ScanModel
+    @AppStorage("wrapText") var wrapText = false
     var shown: [Device] {
         let q = m.search.trimmingCharacters(in: .whitespaces).lowercased()
         var r = m.rows.filter { d in
@@ -566,7 +569,7 @@ struct ContentView: View {
                 if d.wait.contains(.hostname) && d.hostname.isEmpty {
                     Spinner()
                 } else {
-                    Text(d.hostname.isEmpty ? d.ip : d.hostname).lineLimit(1)
+                    Text(m.title(d)).lineLimit(wrapText ? nil : 1)
                     if !d.vendor.isEmpty { Text(d.vendor).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 if m.isFavourite(d) { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Favourite") }
@@ -616,7 +619,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(d.hostname.isEmpty ? d.ip : d.hostname).font(.headline).textSelection(.enabled)
+                    Text(m.title(d)).font(.headline).textSelection(.enabled)
                     if m.isFavourite(d) { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Favourite") }
                 }
                 Text([d.ip, d.vendor, "\(d.ports.count) open port\(d.ports.count == 1 ? "" : "s")"].filter { !$0.isEmpty }.joined(separator: " · "))
@@ -693,7 +696,7 @@ struct ContentView: View {
             let busy = m.scanningPorts.contains(d.ip)
             Form {
                 Section {
-                    Text(d.hostname.isEmpty ? d.ip : d.hostname).font(.title3.bold())
+                    Text(m.title(d)).font(.title3.bold())
                     row("Hostname", d.host, .host, d)
                     row("Manufacturer", d.vendor, nil, d)
                     row("Model", d.model, .model, d)

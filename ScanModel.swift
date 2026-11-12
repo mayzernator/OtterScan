@@ -113,12 +113,17 @@ final class ScanModel: ObservableObject {
         }
     }
 
+    // What the Device column shows; a custom name is shown exactly as typed.
+    func title(_ d: Device) -> String {
+        d.hostname.isEmpty ? d.ip : names[d.key] != nil ? d.hostname : displayName(d.hostname)
+    }
+
     private func cellWidth(_ d: Device, _ f: Field) -> CGFloat {
         func width(_ s: String, _ font: NSFont) -> CGFloat { (s as NSString).size(withAttributes: [.font: font]).width }
         let mono = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), body = NSFont.systemFont(ofSize: 13)
         switch f {
         case .hostname:
-            return 26 + width(d.hostname.isEmpty ? d.ip : d.hostname, body)
+            return 26 + width(title(d), body)
                 + (d.vendor.isEmpty ? 0 : 8 + width(d.vendor, .systemFont(ofSize: 10)))
                 + (isFavourite(d) ? 22 : 0)
         case .ping: return 9
