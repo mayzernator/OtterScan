@@ -3,6 +3,7 @@
 A native macOS app that finds the devices on your local network and the ports they have open.
 
 ## Install
+### Download (quick)
 
 1. Download **OtterScan.dmg** from the [latest release](../../releases/latest).
 2. Open it and drag **OtterScan** onto **Applications**.
@@ -12,7 +13,7 @@ A native macOS app that finds the devices on your local network and the ports th
 
 Needs an Apple Silicon Mac on macOS 14.4 or later. Allow Local Network access when asked.
 
-## Build from source
+### Build from source
 
 Needs only the Xcode Command Line Tools (`xcode-select --install`).
 
@@ -23,3 +24,22 @@ Needs only the Xcode Command Line Tools (`xcode-select --install`).
 
 `make_dmg.sh` drives Finder to lay out the window, so macOS may ask once to let Terminal control Finder.
 The blueprint background is drawn by `make_dmg_bg.swift`.
+
+## Keyboard shortcuts
+### Scan
+
+⌘ + R - One time scan
+
+⌘ + L - Live scan
+
+### Tabs
+
+⌘ + 1 - Devices
+
+⌘ + 2 - Ports (local)
+
+⌘ + 3 - Public (ports)
+
+⌘ + ` - Next view
+
+⌘ + B - Hide details
