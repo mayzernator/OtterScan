@@ -280,7 +280,7 @@ final class ScanModel: ObservableObject {
 
     func startRename(_ ip: String) {
         guard let d = device(ip) else { return }
-        newName = d.hostname
+        newName = d.hostname.isEmpty ? d.ip : d.hostname  // what the cell shows, so an IP-only device starts with its IP selected
         renaming = ip
     }
 
@@ -288,6 +288,7 @@ final class ScanModel: ObservableObject {
     func rename(_ ip: String, to name: String) {
         guard let i = index(ip) else { return }
         let name = name.trimmingCharacters(in: .whitespaces)
+        if rows[i].hostname.isEmpty && name == rows[i].ip { return }  // unchanged IP placeholder isn't a name
         if name.isEmpty { names[rows[i].key] = nil } else { names[rows[i].key] = name; rows[i].hostname = name }
         UserDefaults.standard.set(names, forKey: "names")
     }

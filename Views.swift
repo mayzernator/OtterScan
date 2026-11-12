@@ -38,7 +38,12 @@ struct NameEditor: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSTextField {
         let f = NSTextField(string: text)
-        f.alignment = .center
+        f.isBordered = false  // plain text in the cell's own font, like renaming in Finder, so the row doesn't grow
+        f.drawsBackground = true
+        f.backgroundColor = .textBackgroundColor
+        f.focusRingType = .exterior
+        f.font = .systemFont(ofSize: NSFont.systemFontSize)
+        f.lineBreakMode = .byTruncatingTail
         f.delegate = context.coordinator
         DispatchQueue.main.async {
             f.window?.makeFirstResponder(f)
@@ -547,9 +552,13 @@ struct ContentView: View {
 
     @ViewBuilder func cell(_ d: Device, _ f: Field) -> some View {
         if f == .hostname && m.renaming == d.ip {
-            NameEditor(text: $m.newName) { save in
-                if save { m.rename(d.ip, to: m.newName) }
-                m.renaming = nil
+            HStack(spacing: 8) {  // same icon and spacing as the normal cell, so the box sits exactly over the name
+                Image(systemName: symbol(d.kind)).foregroundStyle(.tint).frame(width: 18).accessibilityHidden(true)
+                NameEditor(text: $m.newName) { save in
+                    if save { m.rename(d.ip, to: m.newName) }
+                    m.renaming = nil
+                }
+                .frame(height: 16)
             }
         } else if f == .hostname {
             HStack(spacing: 8) {
