@@ -351,6 +351,16 @@ struct ContentView: View {
         .background(TableAccess(m: m))
     }
 
+    // The built-in prompt stays left-aligned on macOS, so the prompt is drawn on top instead: faint and italic, so an empty
+    // note reads as an invitation, not as typed text.
+    func noteField(_ d: Device) -> some View {
+        let text = Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) })
+        return ZStack(alignment: .trailing) {
+            if text.wrappedValue.isEmpty { Text("Add a note").italic().foregroundStyle(.tertiary).allowsHitTesting(false) }
+            TextField("", text: text).labelsHidden().multilineTextAlignment(.trailing)  // a titled field would show the title as its own prompt
+        }
+    }
+
     @ViewBuilder func cell(_ d: Device, _ f: Field) -> some View {
         if f == .hostname {
             HStack(spacing: 8) {
@@ -364,8 +374,7 @@ struct ContentView: View {
                 if m.isFavourite(d) { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Favourite") }
             }
         } else if f == .note {
-            TextField("Add a note", text: Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) }))
-                .textFieldStyle(.plain)
+            noteField(d).textFieldStyle(.plain)
         } else if d.wait.contains(f) && d.text(f).isEmpty {
             Spinner()
         } else if f == .ping {
@@ -488,12 +497,12 @@ struct ContentView: View {
                     Button(busy ? "Scanning..." : "Scan Every Port") { m.scanEveryPort(d.ip) }.disabled(busy)
                 }
                 Section {
-                    row("Hostname", d.hostname, .hostname, d)
+                    Text(d.hostname.isEmpty ? d.ip : d.hostname).font(.title3.bold())
+                    row("Hostname", d.host, .host, d)
                     row("Manufacturer", d.vendor, nil, d)
                     row("Model", d.model, .model, d)
                     LabeledContent("Note") {
-                        TextField("Add a note", text: Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) }))
-                            .multilineTextAlignment(.trailing)
+                        noteField(d)
                     }
                     LabeledContent("IPv4 Address") {
                         Button(d.ip) {
@@ -546,7 +555,7 @@ struct ContentView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                 Spacer(minLength: 12)
-                Text(value).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                Text(value).foregroundStyle(.secondary).multilineTextAlignment(.trailing).fixedSize(horizontal: false, vertical: true)
             }
         }
     }

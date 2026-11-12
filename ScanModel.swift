@@ -230,6 +230,8 @@ final class ScanModel: ObservableObject {
     // MARK: actions on a device
 
     func setNote(_ d: Device, _ text: String) {
+        // the field writes its value back when it gains focus; republishing the same text would redraw it again, forever
+        guard text != (device(d.ip)?.note ?? "") else { return }
         notes[d.key] = text.isEmpty ? nil : text
         UserDefaults.standard.set(notes, forKey: "notes")
         if let i = index(d.ip) { rows[i].note = text }
