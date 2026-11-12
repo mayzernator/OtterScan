@@ -237,13 +237,13 @@ struct NotificationPrefs: View {
 
     var body: some View {
         Form {
-            Section("New devices") {
-                Toggle("Notify when a new device joins the network", isOn: $newJoin)
-                Toggle("Notify when a new device leaves the network", isOn: $newLeave)
-            }
             Section("Known devices") {
                 Toggle("Notify when a known device joins the network", isOn: $knownJoin)
                 Toggle("Notify when a known device leaves the network", isOn: $knownLeave)
+            }
+            Section("New devices") {
+                Toggle("Notify when a new device joins the network", isOn: $newJoin)
+                Toggle("Notify when a new device leaves the network", isOn: $newLeave)
             }
         }
         .formStyle(.grouped)
