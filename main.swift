@@ -40,7 +40,7 @@ struct OtterScanApp: App {
                 Divider()
             }
             CommandMenu("Scan") {
-                Button(model.running ? "Stop" : "Scan") { model.toggle() }.keyboardShortcut("r")
+                Button(model.running ? "Stop" : "Scan") { model.toggle() }.keyboardShortcut("s")
                 Button(model.running && model.live ? "Stop Live Scan" : "Live Scan") { model.liveScan() }.keyboardShortcut("l")
             }
         }

@@ -229,6 +229,11 @@ struct ContentView: View {
         .searchable(text: $m.search, prompt: "Search")
         .navigationTitle("OtterScan")
         .navigationSubtitle(m.range)
+        .alert("Edit Hostname", isPresented: Binding(get: { m.renaming != nil }, set: { if !$0 { m.renaming = nil } })) {
+            TextField("Hostname", text: $m.newName)
+            Button("Save") { if let ip = m.renaming { m.rename(ip, to: m.newName) } }
+            Button("Cancel", role: .cancel) {}
+        }
         .alert("Add New URL", isPresented: addURLShown) {
             TextField("URL", text: $m.newURL)
             Button("Open") { if let ip = m.addURLFor { m.addURL(m.newURL, for: ip) } }
@@ -258,6 +263,10 @@ struct ContentView: View {
                 Text("Ports").tag(ViewKind.ports)
                 Text("Public").tag(ViewKind.exposed)
             }.pickerStyle(.segmented)
+        }
+        ToolbarItem {
+            Button { if let ip = m.selection { m.startRename(ip) } } label: { Label("Edit Hostname", systemImage: "pencil") }
+                .keyboardShortcut("r").disabled(m.selection == nil).help("Edit hostname (⌘R)")
         }
         ToolbarItem {
             Button { m.showDetails.toggle() } label: { Label("Details", systemImage: "sidebar.trailing") }
@@ -363,6 +372,7 @@ struct ContentView: View {
                 }
                 if m.isFavourite(d) { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Favourite") }
             }
+            .contentShape(Rectangle()).onTapGesture(count: 2) { m.startRename(d.ip) }
         } else if d.wait.contains(f) && d.text(f).isEmpty {
             Spinner()
         } else if f == .ping {

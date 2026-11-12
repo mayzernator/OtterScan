@@ -28,7 +28,9 @@ The blueprint background is drawn by `make_dmg_bg.swift`.
 ## Keyboard shortcuts
 ### Scan
 
-⌘ + R - One time scan
+⌘ + S - One time scan
+
+⌘ + R - Edit hostname of the selected device
 
 ⌘ + L - Live scan
 
