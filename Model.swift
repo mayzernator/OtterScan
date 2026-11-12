@@ -54,9 +54,9 @@ enum Mode: String, CaseIterable, Identifiable {
 
 // Raw values match the keys in settings.json, so saved column choices carry over from the Python version.
 enum Field: String, CaseIterable, Identifiable {
-    case hostname, ip, host, ping, ports, mac, ipv6_local, ipv6_global, identification, mdns, smb, smb_domain, dns
+    case hostname, ip, host, ping, ports, mac, ipv6_local, ipv6_global, identification, mdns, smb, smb_domain, dns, manufacturer, model, note
     var id: String { rawValue }
-    static let names: Set<Field> = [.hostname, .host, .dns, .mdns, .smb, .smb_domain]
+    static let names: Set<Field> = [.hostname, .host, .dns, .mdns, .smb, .smb_domain, .model]
     var title: String {
         switch self {
         case .hostname: return "Device"
@@ -72,6 +72,9 @@ enum Field: String, CaseIterable, Identifiable {
         case .smb: return "SMB Name"
         case .smb_domain: return "SMB Domain"
         case .dns: return "DNS Name"
+        case .manufacturer: return "Manufacturer"
+        case .model: return "Model"
+        case .note: return "Note"
         }
     }
 }
@@ -105,7 +108,7 @@ struct Found {
 
 struct Device: Identifiable {
     var ip: String, mac: String, ping: Bool, ipv6Local: String, ipv6Global: String, vendor: String
-    var hostname = "", host = "", dns = "", mdns = "", smb = "", smbDomain = ""
+    var hostname = "", host = "", dns = "", mdns = "", smb = "", smbDomain = "", model = "", note = ""
     var ports = [Port](), identification = "", kind = ""
     var wait = Set<Field>()  // what's still being looked up, so the UI can show a spinner
     var portsChecked = false  // tells "no open ports" apart from "never looked"
@@ -127,6 +130,9 @@ struct Device: Identifiable {
         case .smb: return smb
         case .smb_domain: return smbDomain
         case .dns: return dns
+        case .manufacturer: return vendor
+        case .model: return model
+        case .note: return note
         }
     }
 }
@@ -298,9 +304,58 @@ func deviceKind(_ names: String) -> String {  // which symbol to show; "" means 
     return KINDS.first { $0.1.firstMatch(in: names, range: all) != nil }?.0 ?? ""
 }
 
+// "Apple, Inc." -> "Apple", "Samsung Electronics Co.,Ltd" -> "Samsung"
+let COMPANY_SUFFIX = try! NSRegularExpression(
+    pattern: "[\\s,.]+(inc|incorporated|corp|corporation|co|ltd|limited|llc|gmbh|ag|bv|plc|company|technologies|technology|electronics|international)[\\s,.]*$",
+    options: .caseInsensitive)
+
+func cleanVendor(_ s: String) -> String {
+    var name = s
+    while let m = COMPANY_SUFFIX.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)), let r = Range(m.range, in: name) {
+        name.removeSubrange(r)
+    }
+    return name
+}
+
+// Apple's model identifiers ("MacBookPro18,3") start with the product family.
+let APPLE_MODELS = [("MacBookPro", "MacBook Pro"), ("MacBookAir", "MacBook Air"), ("MacBook", "MacBook"), ("Macmini", "Mac mini"),
+                    ("MacPro", "Mac Pro"), ("iMac", "iMac"), ("Mac", "Mac"), ("iPhone", "iPhone"), ("iPad", "iPad"), ("iPod", "iPod"),
+                    ("AppleTV", "Apple TV"), ("AudioAccessory", "HomePod"), ("Watch", "Apple Watch"), ("RealityDevice", "Apple Vision Pro")]
+
+// Marketing names for common identifiers, the way "About This Mac" words them. Anything missing falls back to the family below.
+let APPLE_NAMES = [
+    "MacBookPro15,1": "MacBook Pro (15-inch, 2018)", "MacBookPro15,2": "MacBook Pro (13-inch, 2018)", "MacBookPro15,3": "MacBook Pro (15-inch, 2019)",
+    "MacBookPro15,4": "MacBook Pro (13-inch, 2019)", "MacBookPro16,1": "MacBook Pro (16-inch, 2019)", "MacBookPro16,2": "MacBook Pro (13-inch, 2020)",
+    "MacBookPro16,3": "MacBook Pro (13-inch, 2020)", "MacBookPro17,1": "MacBook Pro (13-inch, M1, 2020)",
+    "MacBookPro18,1": "MacBook Pro (16-inch, M1 Pro, 2021)", "MacBookPro18,2": "MacBook Pro (16-inch, M1 Max, 2021)",
+    "MacBookPro18,3": "MacBook Pro (14-inch, M1 Pro, 2021)", "MacBookPro18,4": "MacBook Pro (14-inch, M1 Max, 2021)",
+    "Mac14,7": "MacBook Pro (13-inch, M2, 2022)", "Mac14,5": "MacBook Pro (14-inch, M2 Max, 2023)", "Mac14,9": "MacBook Pro (14-inch, M2 Pro, 2023)",
+    "Mac14,6": "MacBook Pro (16-inch, M2 Max, 2023)", "Mac14,10": "MacBook Pro (16-inch, M2 Pro, 2023)",
+    "MacBookAir8,1": "MacBook Air (13-inch, 2018)", "MacBookAir8,2": "MacBook Air (13-inch, 2019)", "MacBookAir9,1": "MacBook Air (13-inch, 2020)",
+    "MacBookAir10,1": "MacBook Air (M1, 2020)", "Mac14,2": "MacBook Air (M2, 2022)", "Mac14,15": "MacBook Air (15-inch, M2, 2023)",
+    "Macmini8,1": "Mac mini (2018)", "Macmini9,1": "Mac mini (M1, 2020)", "Mac14,3": "Mac mini (M2, 2023)", "Mac14,12": "Mac mini (M2 Pro, 2023)",
+    "iMac19,1": "iMac (27-inch, 2019)", "iMac20,1": "iMac (27-inch, 2020)", "iMac20,2": "iMac (27-inch, 2020)",
+    "iMac21,1": "iMac (24-inch, M1, 2021)", "iMac21,2": "iMac (24-inch, M1, 2021)",
+    "Mac13,1": "Mac Studio (M1 Max, 2022)", "Mac13,2": "Mac Studio (M1 Ultra, 2022)", "Mac14,13": "Mac Studio (M2 Max, 2023)",
+    "Mac14,14": "Mac Studio (M2 Ultra, 2023)", "MacPro7,1": "Mac Pro (2019)", "Mac14,8": "Mac Pro (2023)",
+    "iPhone12,1": "iPhone 11", "iPhone12,3": "iPhone 11 Pro", "iPhone12,5": "iPhone 11 Pro Max", "iPhone13,1": "iPhone 12 mini",
+    "iPhone13,2": "iPhone 12", "iPhone13,3": "iPhone 12 Pro", "iPhone13,4": "iPhone 12 Pro Max", "iPhone14,2": "iPhone 13 Pro",
+    "iPhone14,3": "iPhone 13 Pro Max", "iPhone14,4": "iPhone 13 mini", "iPhone14,5": "iPhone 13", "iPhone14,6": "iPhone SE (3rd generation)",
+    "iPhone14,7": "iPhone 14", "iPhone14,8": "iPhone 14 Plus", "iPhone15,2": "iPhone 14 Pro", "iPhone15,3": "iPhone 14 Pro Max",
+    "iPhone15,4": "iPhone 15", "iPhone15,5": "iPhone 15 Plus", "iPhone16,1": "iPhone 15 Pro", "iPhone16,2": "iPhone 15 Pro Max",
+    "iPhone17,1": "iPhone 16 Pro", "iPhone17,2": "iPhone 16 Pro Max", "iPhone17,3": "iPhone 16", "iPhone17,4": "iPhone 16 Plus",
+    "AppleTV6,2": "Apple TV 4K (1st generation)", "AppleTV11,1": "Apple TV 4K (2nd generation)", "AppleTV14,1": "Apple TV 4K (3rd generation)",
+    "AudioAccessory1,1": "HomePod", "AudioAccessory5,1": "HomePod mini", "AudioAccessory6,1": "HomePod (2nd generation)"]
+
+func friendlyModel(_ id: String) -> String {
+    if let name = APPLE_NAMES[id] { return name }
+    guard let family = APPLE_MODELS.first(where: { id.hasPrefix($0.0) && id.dropFirst($0.0.count).first?.isNumber == true }) else { return id }
+    return "\(family.1) (\(id))"
+}
+
 func vendor(_ mac: String) -> String {
     if mac == "?" { return "" }
-    if let v = OUI[mac.prefix(8).replacingOccurrences(of: ":", with: "")] { return v }
+    if let v = OUI[mac.prefix(8).replacingOccurrences(of: ":", with: "")] { return cleanVendor(v) }
     return (Int(String(mac.dropFirst().prefix(1)), radix: 16) ?? 0) & 2 != 0 ? "Private address" : ""  // locally-administered bit
 }
 

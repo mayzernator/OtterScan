@@ -17,6 +17,7 @@ final class ScanModel: ObservableObject {
     @Published var newName = ""
     var names = UserDefaults.standard.dictionary(forKey: "names") as? [String: String] ?? [:]  // custom names, by Device.key
     @Published var favourites = Set(UserDefaults.standard.stringArray(forKey: "favourites") ?? [])
+    @Published var notes = UserDefaults.standard.dictionary(forKey: "notes") as? [String: String] ?? [:]
     @Published var exposure: Exposure?
     @Published var exposureError: String?
     @Published var checkingExposure = false
@@ -189,12 +190,14 @@ final class ScanModel: ObservableObject {
             if kept.count != rows.count || zip(kept, rows).contains(where: { $0.ping != $1.ping }) { rows = kept }
         case .row(var d):
             if let n = names[d.key] { d.hostname = n }
+            d.note = notes[d.key] ?? ""
             d.wait = Field.names.union(mode == .off ? [] : [.ports, .identification])
             if let i = index(d.ip) { rows[i] = d } else { rows.append(d) }
         case .update(var d):
             if let n = names[d.key] { d.hostname = n }
             if let i = index(d.ip) {
                 d.ping = rows[i].ping
+                d.note = notes[d.key] ?? ""
                 rows[i] = d
             }
             done += 1
@@ -243,6 +246,14 @@ final class ScanModel: ObservableObject {
         let name = name.trimmingCharacters(in: .whitespaces)
         if name.isEmpty { names[rows[i].key] = nil } else { names[rows[i].key] = name; rows[i].hostname = name }
         UserDefaults.standard.set(names, forKey: "names")
+    }
+
+    func setNote(_ d: Device, _ text: String) {
+        // the field writes its value back when it gains focus; republishing the same text would redraw it again, forever
+        guard text != (device(d.ip)?.note ?? "") else { return }
+        notes[d.key] = text.isEmpty ? nil : text
+        UserDefaults.standard.set(notes, forKey: "notes")
+        if let i = index(d.ip) { rows[i].note = text }
     }
 
     func isFavourite(_ d: Device) -> Bool { favourites.contains(d.key) }

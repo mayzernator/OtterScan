@@ -29,7 +29,7 @@ struct FieldOrder: SortComparator, Hashable {
 }
 
 let codeFields: Set<Field> = [.ip, .ports, .mac, .ipv6_local, .ipv6_global]
-let startHidden: Set<Field> = [.ipv6_local, .ipv6_global, .identification, .mdns, .smb, .smb_domain]
+let startHidden: Set<Field> = [.manufacturer, .ipv6_local, .ipv6_global, .identification, .mdns, .smb, .smb_domain]
 
 func symbol(_ kind: String) -> String {
     switch kind {
@@ -454,6 +454,16 @@ struct ContentView: View {
         .background(TableAccess(m: m))
     }
 
+    // The built-in prompt stays left-aligned on macOS, so the prompt is drawn on top instead: faint and italic, so an empty
+    // note reads as an invitation, not as typed text.
+    func noteField(_ d: Device) -> some View {
+        let text = Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) })
+        return ZStack(alignment: .trailing) {
+            if text.wrappedValue.isEmpty { Text("Add a note").italic().foregroundStyle(.tertiary).allowsHitTesting(false) }
+            TextField("", text: text).labelsHidden().multilineTextAlignment(.trailing)  // a titled field would show the title as its own prompt
+        }
+    }
+
     @ViewBuilder func cell(_ d: Device, _ f: Field) -> some View {
         if f == .hostname {
             HStack(spacing: 8) {
@@ -467,6 +477,8 @@ struct ContentView: View {
                 if m.isFavourite(d) { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Favourite") }
             }
             .contentShape(Rectangle()).onTapGesture(count: 2) { m.startRename(d.ip) }
+        } else if f == .note {
+            noteField(d).textFieldStyle(.plain)
         } else if d.wait.contains(f) && d.text(f).isEmpty {
             Spinner()
         } else if f == .ping {
@@ -589,8 +601,13 @@ struct ContentView: View {
                     Button(busy ? "Scanning..." : "Scan Every Port") { m.scanEveryPort(d.ip) }.disabled(busy)
                 }
                 Section {
-                    row("Hostname", d.hostname, .hostname, d)
-                    row("Vendor", d.vendor, nil, d)
+                    Text(d.hostname.isEmpty ? d.ip : d.hostname).font(.title3.bold())
+                    row("Hostname", d.host, .host, d)
+                    row("Manufacturer", d.vendor, nil, d)
+                    row("Model", d.model, .model, d)
+                    LabeledContent("Note") {
+                        noteField(d)
+                    }
                     LabeledContent("IPv4 Address") {
                         Button(d.ip) {
                             let https = d.ports.contains { $0.port == 443 } && !d.ports.contains { $0.port == 80 }
@@ -642,7 +659,7 @@ struct ContentView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                 Spacer(minLength: 12)
-                Text(value).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                Text(value).foregroundStyle(.secondary).multilineTextAlignment(.trailing).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
