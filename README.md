@@ -34,6 +34,8 @@ The blueprint background is drawn by `make_dmg_bg.swift`.
 
 ⌘ + L - Live scan
 
+⌘ + P - Print the list (Devices and Ports views)
+
 ### Tabs
 
 ⌘ + 1 - Devices
