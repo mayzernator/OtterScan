@@ -276,6 +276,18 @@ func mdnsName(_ ip: String) -> String {  // ask the device itself for its .local
     return parsePTR(udp(ip, 5353, header([0, 0, 1, 0, 0, 0]) + q + [0] + header([12, 1])))
 }
 
+// Apple devices advertise their user-chosen name ("May's MacBook Pro") as a Bonjour instance name; ask for it directly.
+func friendlyName(_ ip: String) -> String {
+    for svc in ["_companion-link", "_airplay"] {
+        var q = [UInt8]()
+        for p in [svc, "_tcp", "local"] { q += [UInt8(p.utf8.count)] + Array(p.utf8) }
+        let suffix = "." + svc + "._tcp.local"
+        let r = parsePTR(udp(ip, 5353, header([0, 0, 1, 0, 0, 0]) + q + [0] + header([12, 1])))
+        if r.hasSuffix(suffix), r.count > suffix.count { return String(r.dropLast(suffix.count)) }
+    }
+    return ""
+}
+
 // NetBIOS node status reply -> (host name, workgroup/domain)
 func parseNbstat(_ r: [UInt8]) -> (String, String) {
     var host = "", domain = ""
@@ -398,8 +410,8 @@ func detail(_ f: Found, _ mode: Mode, _ stop: Stop) throws -> Device {
     d.dns = dnsName(f.ip)
     d.mdns = mdnsName(f.ip)
     (d.smb, d.smbDomain) = smbNames(f.ip)
-    d.hostname = [d.dns, d.mdns, d.smb].first { !$0.isEmpty } ?? ""
-    d.host = d.hostname
+    d.host = [d.dns, d.mdns, d.smb].first { !$0.isEmpty } ?? ""
+    d.hostname = [friendlyName(f.ip), d.host].first { !$0.isEmpty } ?? ""
     d.kind = deviceKind("\(d.dns) \(d.mdns) \(d.smb) \(d.vendor)")
     if mode != .off {
         (d.ports, d.identification) = try portInfo(f.ip, mode, stop)
