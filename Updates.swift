@@ -67,7 +67,7 @@ private func install(_ dmg: URL) {
                 NSApp.abortModal()
                 let a = NSAlert(); a.messageText = "Couldn't install the update"; a.informativeText = failure
                 a.runModal()
-            } else { NSApp.terminate(nil) }
+            } else { NSApp.abortModal(); NSApp.terminate(nil) }  // terminate waits for the open modal, so end it first
         }
     }.resume()
     note.runModal()
