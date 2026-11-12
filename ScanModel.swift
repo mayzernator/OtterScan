@@ -9,11 +9,12 @@ func askToNotify() {  // macOS only asks the first time; later calls change noth
     UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
 }
 
-func notify(_ title: String, _ body: String) {
+func notify(_ title: String, _ body: String, ip: String) {
     guard Bundle.main.bundleIdentifier != nil else { return }
     let c = UNMutableNotificationContent()
     c.title = title
     c.body = body
+    c.userInfo = ["ip": ip]  // read back when the notification is clicked
     UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
 }
 
@@ -243,7 +244,7 @@ final class ScanModel: ObservableObject {
                 guard let d = e.joined ? now[e.key] : lastPass[e.key],
                       UserDefaults.standard.bool(forKey: "notify\(e.known ? "Known" : "New")\(e.joined ? "Join" : "Leave")") else { continue }
                 notify("\(d.hostname.isEmpty ? d.ip : d.hostname) \(e.joined ? "joined" : "left") the network",
-                       "\(e.known ? "Known" : "New") device · \(d.ip)" + (d.mac == "?" ? "" : " · \(d.mac)"))
+                       "\(e.known ? "Known" : "New") device · \(d.ip)" + (d.mac == "?" ? "" : " · \(d.mac)"), ip: d.ip)
             }
         }
         (lastPass, lastRange) = (now, range)
