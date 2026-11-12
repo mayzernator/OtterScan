@@ -315,8 +315,9 @@ func parseTXT(_ r: [UInt8]) -> [String: String] {
     return out
 }
 
-// Services whose TXT records usually say what the device is, most reliable first.
-let MODEL_SERVICES = ["_device-info._tcp", "_airplay._tcp", "_ipp._tcp", "_googlecast._tcp"]
+// Services whose TXT records usually say what the device is. AirPlay goes first: Apple devices answer it quickly and tuck
+// the device-info record into the same reply, whereas asking for device-info directly gets no answer.
+let MODEL_SERVICES = ["_airplay._tcp", "_device-info._tcp", "_ipp._tcp", "_googlecast._tcp"]
 
 // Only asked of devices that already answered mDNS, because each silent service costs a timeout.
 func modelInfo(_ ip: String) -> (maker: String, model: String) {
