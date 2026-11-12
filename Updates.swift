@@ -7,7 +7,7 @@ func checkForUpdates() {
     #if FAKE_UPDATE  // test build only (SWIFTFLAGS=-DFAKE_UPDATE ./build.sh): offers the DMG at URL $FAKE_DMG as version 99.0
     if let dmg = ProcessInfo.processInfo.environment["FAKE_DMG"] {
         if ProcessInfo.processInfo.environment["FAKE_AUTO"] != nil {  // press Download by itself: tests no click is needed after it
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { NSApp.stopModal(withCode: .alertFirstButtonReturn) }
+            RunLoop.main.add(Timer(timeInterval: 2, repeats: false) { _ in NSApp.stopModal(withCode: .alertFirstButtonReturn) }, forMode: .common)
         }
         return showUpdateResult(.success(Release(version: "99.0", page: URL(string: RELEASES_PAGE)!, dmg: URL(string: dmg)!)))
     }
@@ -50,21 +50,14 @@ private func showUpdateResult(_ result: Result<Release, Error>) {
     NSApp.activate()
     guard alert.runModal() == .alertFirstButtonReturn, let release else { return }
     guard let dmg = release.dmg else { NSWorkspace.shared.open(release.page); return }
-    install(dmg)
+    install(dmg, version: release.version)
 }
 
 // A URLSession download carries no quarantine flag, so Gatekeeper never asks for "Open Anyway".
-private func install(_ dmg: URL) {
-    let note = NSAlert()
-    note.messageText = "Downloading update…"
-    note.informativeText = "OtterScan will restart when it's installed."
-    // Not runModal: a modal session swallows terminate until a click ends it (abortModal only takes effect on the next event).
-    let hide = note.addButton(withTitle: "Hide")
-    hide.target = note.window; hide.action = #selector(NSWindow.orderOut(_:))
-    note.layout()  // NSAlert only lays itself out inside runModal; shown directly its window is the raw template
-    NSApp.activate()
-    note.window.center(); note.window.makeKeyAndOrderFront(nil)
-    URLSession.shared.downloadTask(with: dmg) { file, _, error in
+// A plain window with a progress bar, not a modal alert: a modal session holds off terminate until it is clicked away.
+private func install(_ dmg: URL, version: String) {
+    var task: URLSessionDownloadTask!
+    task = URLSession.shared.downloadTask(with: dmg) { file, _, error in
         var failure: String?
         if let file {
             let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("otterscan-update-\(UUID().uuidString)")
@@ -73,15 +66,60 @@ private func install(_ dmg: URL) {
                 try FileManager.default.moveItem(at: file, to: img)
                 try runInstaller(img, mount: tmp)
             } catch { failure = error.localizedDescription }
-        } else { failure = error?.localizedDescription ?? "Download failed" }
+        } else if (error as? URLError)?.code != .cancelled { failure = error?.localizedDescription ?? "Download failed" }
         DispatchQueue.main.async {
-            note.window.orderOut(nil)
+            progressWindow?.close(); progressWindow = nil
             if let failure {
                 let a = NSAlert(); a.messageText = "Couldn't install the update"; a.informativeText = failure
                 a.runModal()
-            } else { NSApp.terminate(nil) }
+            } else if file != nil { NSApp.terminate(nil) }
         }
-    }.resume()
+    }
+    showProgress(version, task)
+    task.resume()
+}
+
+private var progressWindow: NSPanel?  // main thread only
+
+private func showProgress(_ version: String, _ task: URLSessionDownloadTask) {
+    let icon = NSImageView(image: NSApp.applicationIconImage)
+    icon.widthAnchor.constraint(equalToConstant: 64).isActive = true
+    icon.heightAnchor.constraint(equalToConstant: 64).isActive = true
+    let title = NSTextField(labelWithString: "Updating to OtterScan \(version)")
+    title.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+    let note = NSTextField(labelWithString: "OtterScan will restart by itself when it's ready.")
+    note.textColor = .secondaryLabelColor
+    let bar = NSProgressIndicator()
+    bar.style = .bar
+    bar.observedProgress = task.progress
+    let cancel = NSButton(title: "Cancel", target: task, action: #selector(URLSessionTask.cancel))
+    cancel.keyEquivalent = "\u{1b}"
+    let buttons = NSStackView(views: [NSView(), cancel])
+    let text = NSStackView(views: [title, note, bar, buttons])
+    text.orientation = .vertical; text.alignment = .leading; text.spacing = 10
+    text.setCustomSpacing(16, after: bar)  // air between the bar and Cancel
+    for v in [bar, buttons] { v.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true }
+    let row = NSStackView(views: [icon, text])
+    row.alignment = .top; row.spacing = 20
+    text.widthAnchor.constraint(equalToConstant: 320).isActive = true
+    // Pinned with explicit margins: an NSStackView's edgeInsets left the bottom edge tight against Cancel.
+    let content = NSView()
+    row.translatesAutoresizingMaskIntoConstraints = false
+    content.addSubview(row)
+    NSLayoutConstraint.activate([
+        row.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
+        row.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -24),
+        row.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 28),
+        row.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28)])
+    content.layoutSubtreeIfNeeded()
+
+    let w = NSPanel(contentRect: NSRect(origin: .zero, size: content.fittingSize), styleMask: [.titled], backing: .buffered, defer: false)
+    w.title = "Software Update"
+    w.hidesOnDeactivate = false  // a panel vanishes when the app loses focus otherwise
+    w.contentView = content
+    progressWindow = w
+    NSApp.activate()
+    w.center(); w.makeKeyAndOrderFront(nil)
 }
 
 // Mounts the image, then a detached shell waits for this app to quit, swaps the bundle and reopens it.

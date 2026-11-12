@@ -9,6 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if Bundle.main.bundleIdentifier != nil { UNUserNotificationCenter.current().delegate = self }  // asks for nothing yet
         #if FAKE_UPDATE
         if ProcessInfo.processInfo.environment["FAKE_AUTO"] != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { checkForUpdates() } }
+        if ProcessInfo.processInfo.environment["FAKE_SETTINGS"] != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if let menu = NSApp.mainMenu?.items.first?.submenu, let i = menu.items.firstIndex(where: { $0.keyEquivalent == "," }) { menu.performActionForItem(at: i) }
+        } }
         #endif
     }
 

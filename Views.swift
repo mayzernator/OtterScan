@@ -256,21 +256,16 @@ struct TableAccess: NSViewRepresentable {
 }
 
 struct PreferencesView: View {
+    @AppStorage("settingsTab") var tab = "general"
     var body: some View {
-        VStack(spacing: 0) {
-            TabView {
-                GeneralPrefs().tabItem { Label("General", systemImage: "gearshape") }
-                ScanPrefs().tabItem { Label("Scan", systemImage: "network") }
-                NotificationPrefs().tabItem { Label("Notifications", systemImage: "bell") }
-            }
-            HStack {
-                Spacer()
-                Button("OK") { NSApp.keyWindow?.close() }.keyboardShortcut(.defaultAction)
-            }
-            .padding([.horizontal, .bottom], 20)
+        TabView(selection: $tab) {
+            GeneralPrefs().tabItem { Label("General", systemImage: "gearshape") }.tag("general")
+            ScanPrefs().tabItem { Label("Scan", systemImage: "network") }.tag("scan")
+            NotificationPrefs().tabItem { Label("Notifications", systemImage: "bell") }.tag("notifications")
         }
+        .toggleStyle(.switch)
         .navigationTitle("OtterScan")
-        .frame(width: 460)
+        .frame(width: 480)
         .onAppear { applyStayOnTop() }  // Settings floats too, or the main window would cover it
     }
 }
@@ -293,29 +288,67 @@ struct GeneralPrefs: View {
     @AppStorage("stayOnTop") var stayOnTop = false
     @AppStorage("wrapText") var wrapText = false
     @AppStorage("friendlyPorts") var friendlyPorts = false
+    let info = Bundle.main.infoDictionary ?? [:]
 
     var body: some View {
         Form {
-            Toggle("Start a Live Scan when OtterScan opens", isOn: $liveAtLaunch)
-            Picker("Scan type at launch", selection: $live) {
-                Text("Scan").tag(false)
-                Text("Live Scan").tag(true)
+            Section {
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 44, height: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("OtterScan").font(.headline)
+                        Text("Finds and watches the devices on your network").foregroundStyle(.secondary)
+                    }
+                }.padding(.vertical, 4)
             }
-            Picker("Port check at launch", selection: $mode) {
-                Text("Off").tag("off")
-                Text("Common").tag("common")
-                Text("All (slow)").tag("all")
+            Section("When OtterScan Opens") {
+                Toggle(isOn: $liveAtLaunch) {
+                    Text("Start scanning right away")
+                    Text("Begins a scan as soon as the window opens.")
+                }
+                Picker(selection: $live) { Text("Scan").tag(false); Text("Live Scan").tag(true) } label: {
+                    Text("Scan type")
+                    Text("Live Scan keeps rescanning so you see devices come and go.")
+                }
+                Picker(selection: $mode) { Text("Off").tag("off"); Text("Common").tag("common"); Text("All (slow)").tag("all") } label: {
+                    Text("Port check")
+                    Text("Which ports to check on each device.")
+                }
+                Picker(selection: $pause) { ForEach([5.0, 10, 30, 60], id: \.self) { Text("\(Int($0)) seconds").tag($0) } } label: {
+                    Text("Live Scan checks every")
+                    Text("Shorter notices changes sooner but makes more network traffic.")
+                }
             }
-            Picker("Live Scan checks every", selection: $pause) {
-                ForEach([5.0, 10, 30, 60], id: \.self) { Text("\(Int($0)) seconds").tag($0) }
+            Section("Device Table") {
+                Toggle(isOn: $autoDetails) {
+                    Text("Open details on select")
+                    Text("Shows the details panel when you pick a device.")
+                }
+                Toggle(isOn: $wrapText) {
+                    Text("Wrap text")
+                    Text("Long names and port lists use more lines instead of being cut off.")
+                }
+                Toggle(isOn: $friendlyPorts) {
+                    Text("Friendly port names")
+                    Text("Shows SSH 22 instead of just 22.")
+                }
             }
-            Toggle("Open details when a device is selected", isOn: $autoDetails)
-            Toggle("Wrap text in the device table", isOn: $wrapText)
-            Toggle("Show friendly port names in devices", isOn: $friendlyPorts)
-            Toggle("Keep OtterScan on top of other windows", isOn: $stayOnTop)
-                .onChange(of: stayOnTop) { applyStayOnTop() }
-            if let buyMeACoffeeURL {
-                Link(destination: buyMeACoffeeURL) { Label("Buy Me a Coffee", systemImage: "cup.and.saucer.fill") }
+            Section("Window") {
+                Toggle(isOn: $stayOnTop) {
+                    Text("Keep on top")
+                    Text("OtterScan stays above other apps' windows.")
+                }.onChange(of: stayOnTop) { applyStayOnTop() }
+            }
+            Section("Updates") {
+                LabeledContent("Version") {
+                    HStack {
+                        Text("\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))").foregroundStyle(.secondary)
+                        Button("Check Now") { checkForUpdates() }
+                    }
+                }
+                if let buyMeACoffeeURL {
+                    Link(destination: buyMeACoffeeURL) { Label("Buy Me a Coffee", systemImage: "cup.and.saucer.fill") }
+                }
             }
         }
         .formStyle(.grouped)
@@ -332,13 +365,13 @@ struct NotificationPrefs: View {
 
     var body: some View {
         Form {
-            Section("Known devices") {
-                Toggle("Notify when a known device joins the network", isOn: $knownJoin)
-                Toggle("Notify when a known device leaves the network", isOn: $knownLeave)
+            Section("Known Devices") {
+                Toggle(isOn: $knownJoin) { Text("Joins the network"); Text("A device you've seen before comes back.") }
+                Toggle(isOn: $knownLeave) { Text("Leaves the network"); Text("A device you've seen before stops answering.") }
             }
-            Section("New devices") {
-                Toggle("Notify when a new device joins the network", isOn: $newJoin)
-                Toggle("Notify when a new device leaves the network", isOn: $newLeave)
+            Section("New Devices") {
+                Toggle(isOn: $newJoin) { Text("Joins the network"); Text("A device OtterScan has never seen shows up.") }
+                Toggle(isOn: $newLeave) { Text("Leaves the network"); Text("A device that first showed up since OtterScan opened goes away.") }
             }
         }
         .formStyle(.grouped)
@@ -392,7 +425,7 @@ struct ScanPrefs: View {
                     LabeledContent("Range", value: n.description)
                 }
             }
-            Section("Scan range") {
+            Section("Scan Range") {
                 HStack {
                     Picker("Saved ranges", selection: selected) {
                         Text(saved.isEmpty ? "None saved" : "Choose…").tag("")
