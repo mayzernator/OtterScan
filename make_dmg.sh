@@ -1,8 +1,10 @@
 #!/bin/sh
-# Builds dist/OtterScan.dmg: the drag-to-Applications installer. Needs only Xcode Command Line Tools.
+# Builds dist/OtterScan-<version>.dmg: the drag-to-Applications installer. Needs only Xcode Command Line Tools.
 set -e
 cd "$(dirname "$0")"
 [ -d OtterScan.app ] || ./build.sh
+V="$(plutil -extract CFBundleShortVersionString raw OtterScan.app/Contents/Info.plist)"
+OUT="dist/OtterScan-$V.dmg"
 T="$(mktemp -d)"; trap 'hdiutil detach "/Volumes/OtterScan" -quiet 2>/dev/null; rm -rf "$T"' EXIT
 mkdir -p dist "$T/src/.background"
 swiftc -O make_dmg_bg.swift -o "$T/bg"
@@ -38,6 +40,6 @@ end tell
 EOF
 sync
 hdiutil detach /Volumes/OtterScan -quiet
-rm -f dist/OtterScan.dmg
-hdiutil convert "$T/rw.dmg" -format UDZO -imagekey zlib-level=9 -o dist/OtterScan.dmg -quiet
-echo built dist/OtterScan.dmg
+rm -f "$OUT"
+hdiutil convert "$T/rw.dmg" -format UDZO -imagekey zlib-level=9 -o "$OUT" -quiet
+echo "built $OUT"

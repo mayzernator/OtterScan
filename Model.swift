@@ -217,7 +217,7 @@ func parseRelease(_ data: Data, status: Int) throws -> Release {
           !versionParts(tag).isEmpty else { throw ScanError("GitHub's answer wasn't a release") }
     let page = (j["html_url"] as? String).flatMap { $0.hasPrefix(RELEASES_PAGE + "/") ? URL(string: $0) : nil }
     let dmg = (j["assets"] as? [[String: Any]])?.lazy.compactMap { $0["browser_download_url"] as? String }
-        .first { $0.hasPrefix(RELEASES_PAGE + "/download/") && $0.hasSuffix("/OtterScan.dmg") }.flatMap { URL(string: $0) }
+        .first { $0.hasPrefix(RELEASES_PAGE + "/download/") && $0.hasSuffix(".dmg") && URL(string: $0)?.lastPathComponent.hasPrefix("OtterScan") == true }.flatMap { URL(string: $0) }
     return Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, page: page ?? URL(string: RELEASES_PAGE + "/latest")!, dmg: dmg)
 }
 
