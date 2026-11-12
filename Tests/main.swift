@@ -191,6 +191,26 @@ check(bugBody.contains("- OtterScan: 2.1+beta (42)\n- macOS: Version 15.1 (Build
 check(!bug.absoluteString.contains("+") && bug.absoluteString.components(separatedBy: "&").count == 2, "bug report body is fully encoded")
 check(["## What happened", "## What you expected", "## Steps to reproduce", "## Environment"].allSatisfy(bugBody.contains), "bug report headings")
 
+// nettop: per-socket counters become per-remote-address deltas; IPv6, listeners and garbage are skipped
+let nt = """
+time,,interface,state,bytes_in,bytes_out,rx_dupe,
+09:17:54.7,apsd.369,,,100,200,0,
+09:17:54.6,tcp4 10.0.0.2:5000<->10.0.0.9:80,en0,Established,100,200,0,
+09:17:54.6,tcp4 10.0.0.2:5001<->10.0.0.9:443,en0,Established,10,20,0,
+09:17:54.6,tcp4 127.0.0.1:9180<->*:*,lo0,Listen,,,,
+09:17:54.6,tcp6 fe80::1.5<->fe80::2.6,en0,Established,5,5,0,
+09:17:54.6,udp4 10.0.0.2:7<->10.0.0.9:7,,Unknow,1,2,
+"""
+let n1 = parseNettop(nt)
+check(n1.count == 3 && n1["tcp4 10.0.0.2:5000<->10.0.0.9:80"]?.remote == "10.0.0.9", "nettop sockets parsed")
+var n2 = n1
+n2["tcp4 10.0.0.2:5000<->10.0.0.9:80"]?.bytesIn = 160
+n2["tcp4 10.0.0.2:5002<->10.0.0.9:22"] = Conn(bytesIn: 7, bytesOut: 3, remote: "10.0.0.9")  // opened since the last sample
+let step = usageStep(previous: n1, now: n2)
+check(step.count == 1 && step["10.0.0.9"]?.bytesIn == 67 && step["10.0.0.9"]?.bytesOut == 3, "usage delta per remote address")
+check(usageStep(previous: n2, now: n1)["10.0.0.9"]?.bytesIn == 0, "a counter that went down is not negative traffic")
+check(parseNettop("garbage,,\n").isEmpty, "garbage")
+
 // reading the kernel's neighbor tables must not crash, whatever they hold
 _ = arpTable(); _ = ndpTable()
 

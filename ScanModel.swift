@@ -18,7 +18,14 @@ func notify(_ title: String, _ body: String, ip: String) {
     UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
 }
 
-enum ViewKind: String, CaseIterable { case devices, ports, exposed }
+enum ViewKind: String, CaseIterable { case devices, ports, usage, exposed }
+
+struct UsageSample: Identifiable { let id: Int, bytesIn: Int, bytesOut: Int }
+
+struct UsageRow: Identifiable {
+    let id: String, name: String, bytesIn: Int, bytesOut: Int
+    var total: Int { bytesIn + bytesOut }
+}
 
 final class ScanModel: ObservableObject {
     @Published var rows = [Device]()
@@ -39,6 +46,11 @@ final class ScanModel: ObservableObject {
     @Published var exposureError: String?
     @Published var checkingExposure = false
     @Published var message = ""
+    @Published var usage = [String: [UsageSample]]()  // recent traffic between this Mac and each address, by ip
+    @Published var usageTotal = [String: (bytesIn: Int, bytesOut: Int)]()  // since launch
+    @Published var usageSort = [KeyPathComparator(\UsageRow.total, order: .reverse)]
+    private var usageTick = 0
+    private var monitoring = false
     @Published var range = ""
     @Published var done = 0
     @Published var total: Int?  // nil until the first sweep has finished
@@ -172,6 +184,7 @@ final class ScanModel: ObservableObject {
         total = nil
         range = ""
         mine = Set(localIPs())
+        monitorUsage()
         message = "Finding devices..."
         Thread.detachNewThread { [weak self] in
             var end = "Scan complete"
@@ -185,6 +198,34 @@ final class ScanModel: ObservableObject {
                 end = "Error: \(error.localizedDescription)"
             }
             DispatchQueue.main.async { if self?.session == id { self?.finish(end) } }
+        }
+    }
+
+    // Samples nettop every few seconds, once. The first sample only sets the baseline.
+    private func monitorUsage() {
+        guard !monitoring else { return }
+        monitoring = true
+        Thread.detachNewThread { [weak self] in
+            var previous: [String: Conn]?
+            while self != nil {
+                if let now = nettopSample() {
+                    let step = previous.map { usageStep(previous: $0, now: now) }
+                    previous = now
+                    DispatchQueue.main.async { if let step { self?.addUsage(step) } }
+                }
+                Thread.sleep(forTimeInterval: 2)
+            }
+        }
+    }
+
+    private func addUsage(_ step: [String: (bytesIn: Int, bytesOut: Int)]) {
+        usageTick += 1
+        for ip in Set(rows.map(\.ip)).union(step.keys) {
+            let d = step[ip] ?? (0, 0)
+            usage[ip, default: []].append(UsageSample(id: usageTick, bytesIn: d.bytesIn, bytesOut: d.bytesOut))
+            if usage[ip]!.count > 150 { usage[ip]!.removeFirst() }
+            let t = usageTotal[ip] ?? (0, 0)
+            usageTotal[ip] = (t.bytesIn + d.bytesIn, t.bytesOut + d.bytesOut)
         }
     }
 
