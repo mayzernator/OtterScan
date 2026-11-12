@@ -30,6 +30,54 @@ struct FieldOrder: SortComparator, Hashable {
     }
 }
 
+// NSTextField that puts the caret after the existing text when it gains focus (AppKit selects all by default).
+// With mouseOnly it takes focus only from a click on itself: a table hands first responder to a text field in
+// the selected row on selection changes, which is what used to select a row's note box.
+final class EndField: NSTextField {
+    var mouseOnly = false
+    override func becomeFirstResponder() -> Bool {
+        if mouseOnly && NSApp.currentEvent?.type != .leftMouseDown { return false }
+        let ok = super.becomeFirstResponder()
+        if ok { DispatchQueue.main.async { self.currentEditor()?.selectedRange = NSRange(location: self.stringValue.utf16.count, length: 0) } }
+        return ok
+    }
+}
+
+// The note box for the table (blank) and the details panel (with a prompt).
+struct NoteEditor: NSViewRepresentable {
+    @Binding var text: String
+    var prompt = ""
+
+    func makeNSView(context: Context) -> EndField {
+        let f = EndField(string: text)
+        f.mouseOnly = true
+        f.isBordered = false
+        f.drawsBackground = false
+        f.focusRingType = .none
+        f.alignment = .right
+        f.lineBreakMode = .byTruncatingTail
+        f.cell?.isScrollable = true
+        f.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        f.placeholderAttributedString = NSAttributedString(string: prompt, attributes: [
+            .foregroundColor: NSColor.tertiaryLabelColor, .font: NSFontManager.shared.convert(.systemFont(ofSize: NSFont.systemFontSize), toHaveTrait: .italicFontMask),
+            .paragraphStyle: { let p = NSMutableParagraphStyle(); p.alignment = .right; return p }()])
+        f.delegate = context.coordinator
+        return f
+    }
+
+    func updateNSView(_ f: EndField, context: Context) {
+        context.coordinator.parent = self
+        if f.currentEditor() == nil && f.stringValue != text { f.stringValue = text }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: NoteEditor
+        init(_ p: NoteEditor) { parent = p }
+        func controlTextDidChange(_ n: Notification) { parent.text = (n.object as? NSTextField)?.stringValue ?? parent.text }
+    }
+}
+
 // A text box that sits over the name in the Device column: Return or clicking away saves, Escape cancels.
 // AppKit rather than SwiftUI's TextField, which can't take focus and select its text on appearing without @FocusState.
 struct NameEditor: NSViewRepresentable {
@@ -37,7 +85,7 @@ struct NameEditor: NSViewRepresentable {
     var done: (Bool) -> Void  // true to save
 
     func makeNSView(context: Context) -> NSTextField {
-        let f = NSTextField(string: text)
+        let f = EndField(string: text)
         f.isBordered = false  // plain text in the cell's own font, like renaming in Finder, so the row doesn't grow
         f.drawsBackground = true
         f.backgroundColor = .textBackgroundColor
@@ -45,10 +93,7 @@ struct NameEditor: NSViewRepresentable {
         f.font = .systemFont(ofSize: NSFont.systemFontSize)
         f.lineBreakMode = .byTruncatingTail
         f.delegate = context.coordinator
-        DispatchQueue.main.async {
-            f.window?.makeFirstResponder(f)
-            f.currentEditor()?.selectAll(nil)
-        }
+        DispatchQueue.main.async { f.window?.makeFirstResponder(f) }  // EndField puts the caret at the end
         return f
     }
 
@@ -543,14 +588,9 @@ struct ContentView: View {
         .background(TableAccess(m: m))
     }
 
-    // The built-in prompt stays left-aligned on macOS, so the prompt is drawn on top instead: faint and italic, so an empty
-    // note reads as an invitation, not as typed text.
-    func noteField(_ d: Device) -> some View {
-        let text = Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) })
-        return ZStack(alignment: .trailing) {
-            if text.wrappedValue.isEmpty { Text("Add a note").italic().foregroundStyle(.tertiary).allowsHitTesting(false) }
-            TextField("", text: text).labelsHidden().multilineTextAlignment(.trailing)  // a titled field would show the title as its own prompt
-        }
+    // The table's note box is blank; the details panel passes a prompt.
+    func noteField(_ d: Device, prompt: String = "") -> some View {
+        NoteEditor(text: Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) }), prompt: prompt)
     }
 
     @ViewBuilder func cell(_ d: Device, _ f: Field) -> some View {
@@ -576,7 +616,7 @@ struct ContentView: View {
             }
             .contentShape(Rectangle()).onTapGesture(count: 2) { m.startRename(d.ip) }
         } else if f == .note {
-            noteField(d).textFieldStyle(.plain)
+            noteField(d)
         } else if d.wait.contains(f) && d.text(f).isEmpty {
             Spinner()
         } else if f == .ping {
@@ -696,12 +736,20 @@ struct ContentView: View {
             let busy = m.scanningPorts.contains(d.ip)
             Form {
                 Section {
-                    Text(m.title(d)).font(.title3.bold())
+                    if m.editingTitle {
+                        NameEditor(text: $m.newName) { save in
+                            if save { m.rename(d.ip, to: m.newName) }
+                            m.editingTitle = false
+                        }.frame(height: 22)
+                    } else {
+                        Text(m.title(d)).font(.title3.bold()).help("Click to rename")
+                            .contentShape(Rectangle()).onTapGesture { m.startRename(d.ip); m.renaming = nil; m.editingTitle = true }
+                    }
                     row("Hostname", d.host, .host, d)
                     row("Manufacturer", d.vendor, nil, d)
                     row("Model", d.model, .model, d)
                     LabeledContent("Note") {
-                        noteField(d)
+                        noteField(d, prompt: "Add a note")
                     }
                     LabeledContent("IPv4 Address") {
                         Button(d.ip) {
