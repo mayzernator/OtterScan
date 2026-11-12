@@ -598,9 +598,6 @@ struct ContentView: View {
             let busy = m.scanningPorts.contains(d.ip)
             Form {
                 Section {
-                    Button(busy ? "Scanning..." : "Scan Every Port") { m.scanEveryPort(d.ip) }.disabled(busy)
-                }
-                Section {
                     Text(d.hostname.isEmpty ? d.ip : d.hostname).font(.title3.bold())
                     row("Hostname", d.host, .host, d)
                     row("Manufacturer", d.vendor, nil, d)
@@ -642,6 +639,9 @@ struct ContentView: View {
                     row("ISP", m.me["isp"] ?? "", nil, d)
                     row("Country", m.me["country"] ?? "", nil, d)
                     row("Public IPv4", m.me["query"] ?? "", nil, d)
+                }
+                Section {
+                    Button(busy ? "Scanning..." : "Scan Every Port") { m.scanEveryPort(d.ip) }.disabled(busy)
                 }
             }
             .formStyle(.grouped)
