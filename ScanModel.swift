@@ -30,6 +30,7 @@ final class ScanModel: ObservableObject {
     @Published var filters = Filters()
     @Published var renaming: String?  // ip of the device whose name is being edited
     @Published var newName = ""
+    @Published var editingTitle = false  // the details panel's title is being renamed (shares newName)
     var names = UserDefaults.standard.dictionary(forKey: "names") as? [String: String] ?? [:]  // custom names, by Device.key
     @Published var favourites = Set(UserDefaults.standard.stringArray(forKey: "favourites") ?? [])
     @Published var notes = UserDefaults.standard.dictionary(forKey: "notes") as? [String: String] ?? [:]
@@ -280,7 +281,7 @@ final class ScanModel: ObservableObject {
 
     func startRename(_ ip: String) {
         guard let d = device(ip) else { return }
-        newName = d.hostname.isEmpty ? d.ip : d.hostname  // what the cell shows, so an IP-only device starts with its IP selected
+        newName = d.hostname.isEmpty ? d.ip : d.hostname  // what the cell shows, so an IP-only device starts with its IP
         renaming = ip
     }
 
