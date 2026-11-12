@@ -51,6 +51,10 @@ check(localIPs().contains("127.0.0.1"), "loopback is listed")
 check(ipv4("10.0.0.1") == 0x0a000001 && ipv4(0x0a000001) == "10.0.0.1" && ipv4("10.0.0") == nil, "ipv4 round trip")
 check((try? parseNet("192.168.1.77/24"))?.description == "192.168.1.0/24", "range rounds down to its network")
 check((try? parseNet("10.0.0.0/20")) != nil, "a /20 is the biggest allowed")
+let lan = Net(ipv4("10.0.0.0")!, 24)
+check((try? customRange(lan, "10.0.0.5", "10.0.0.9"))?.hosts.count == 5, "From/To narrows the scan")
+check((try? customRange(lan, "", ""))?.description == "10.0.0.0/24", "blank From/To keeps the whole subnet")
+check((try? customRange(lan, "10.0.1.5", ""))  == nil && (try? customRange(lan, "10.0.0.9", "10.0.0.5")) == nil, "rejects out-of-subnet and reversed ranges")
 for bad in ["10.0.0.0/19", "8.8.8.0/24", "nonsense", "10.0.0.0/33", "10.0.0.0/8"] { check((try? parseNet(bad)) == nil, "rejects range \(bad)") }
 check(Net(ipv4("10.0.0.0")!, 30).hosts == [0x0a000001, 0x0a000002], "hosts leave out network and broadcast")
 

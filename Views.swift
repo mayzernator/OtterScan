@@ -123,13 +123,33 @@ struct TableAccess: NSViewRepresentable {
 }
 
 struct PreferencesView: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            TabView {
+                GeneralPrefs().tabItem { Label("General", systemImage: "gearshape") }
+                ScanPrefs().tabItem { Label("Scan", systemImage: "network") }
+            }
+            HStack {
+                Spacer()
+                Button("OK") { NSApp.keyWindow?.close() }.keyboardShortcut(.defaultAction)
+            }
+            .padding([.horizontal, .bottom], 20)
+        }
+        .navigationTitle("OtterScan")
+        .frame(width: 460)
+    }
+}
+
+struct GeneralPrefs: View {
     @AppStorage("defaultLive") var live = false
     @AppStorage("defaultMode") var mode = "common"
     @AppStorage("livePause") var pause = 5.0
     @AppStorage("autoDetails") var autoDetails = true
+    @AppStorage("liveAtLaunch") var liveAtLaunch = true
 
     var body: some View {
         Form {
+            Toggle("Start a Live Scan when OtterScan opens", isOn: $liveAtLaunch)
             Picker("Scan type at launch", selection: $live) {
                 Text("Scan").tag(false)
                 Text("Live Scan").tag(true)
@@ -145,8 +165,79 @@ struct PreferencesView: View {
             Toggle("Open details when a device is selected", isOn: $autoDetails)
         }
         .formStyle(.grouped)
-        .frame(width: 420)
+        .scrollDisabled(true)  // fixed-height pane: nothing to scroll
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+struct ScanPrefs: View {
+    @AppStorage("scanInterface") var name = ""
+    @AppStorage("scanFrom") var from = ""
+    @AppStorage("scanTo") var to = ""
+    @AppStorage("savedRanges") var savedRaw = ""  // "from - to" entries, one per line (no @State: swiftc here has no macro plugin)
+    var saved: [String] { savedRaw.split(separator: "\n").map(String.init) }
+    // Real LAN interfaces only: no loopback, link-local or public addresses
+    let names = friendlyInterfaceNames()
+    let ifaces = interfaces().filter { isPrivate($0.ip) && ipv4($0.ip).hasPrefix("127.") == false && ipv4($0.ip).hasPrefix("169.254.") == false }
+
+    var chosen: Iface? { ifaces.first { $0.name == name } ?? (try? localNet()).flatMap { n in ifaces.first { Net($0.ip, $0.mask.nonzeroBitCount).base == n.base } } }
+    var net: Net? { chosen.map { Net($0.ip, $0.mask.nonzeroBitCount) } }
+    var problem: String? {
+        guard let net else { return nil }
+        do { _ = try checkedNet(try customRange(net, from, to)); return nil } catch { return error.localizedDescription }
+    }
+
+    var current: String { "\(from.trimmingCharacters(in: .whitespaces)) - \(to.trimmingCharacters(in: .whitespaces))" }
+    var selected: Binding<String> {
+        Binding(get: { saved.contains(current) ? current : "" }, set: { s in
+            let p = s.components(separatedBy: " - ")
+            if p.count == 2 { from = p[0]; to = p[1] }
+        })
+    }
+    var firstHost: String { net.map { ipv4($0.hosts.first ?? $0.base) } ?? "" }
+    var lastHost: String { net.map { ipv4($0.hosts.last ?? $0.last) } ?? "" }
+    func fill() { from = firstHost; to = lastHost }  // real values, not placeholders, so typing edits them
+    func store(_ list: [String]) { savedRaw = list.joined(separator: "\n") }
+
+    var body: some View {
+        Form {
+            Section("Network") {
+                Picker("Interface", selection: $name) {
+                    Text("Automatic").tag("")
+                    ForEach(ifaces, id: \.name) { Text("\($0.name)" + (names[$0.name].map { " – \($0)" } ?? "") + " (\(ipv4($0.ip)))").tag($0.name) }
+                }
+                if let i = chosen, let n = net {
+                    LabeledContent("MAC", value: i.mac)
+                    LabeledContent("IP / Mask", value: "\(ipv4(i.ip)) / \(ipv4(i.mask))")
+                    LabeledContent("Range", value: n.description)
+                }
+            }
+            Section("Scan range") {
+                HStack {
+                    Picker("Saved ranges", selection: selected) {
+                        Text(saved.isEmpty ? "None saved" : "Choose…").tag("")
+                        ForEach(saved, id: \.self) { Text($0).tag($0) }
+                    }
+                    Button { store(saved.filter { $0 != selected.wrappedValue }) } label: { Image(systemName: "trash") }
+                        .disabled(selected.wrappedValue.isEmpty).help("Delete the selected saved range")
+                }
+                TextField("From", text: $from)
+                TextField("To", text: $to)
+                HStack {
+                    if let problem { Text(problem).foregroundStyle(.red).font(.caption) }
+                    Spacer()
+                    Button("Save") { store(saved + [current]) }
+                        .disabled(problem != nil || from.isEmpty || to.isEmpty || saved.contains(current))
+                        .help("Keep this range in the Saved ranges list")
+                    Button("Reset") { fill() }.disabled(from == firstHost && to == lastHost)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollDisabled(true)
+        .fixedSize(horizontal: false, vertical: true)
+        .onAppear { if from.trimmingCharacters(in: .whitespaces).isEmpty || to.trimmingCharacters(in: .whitespaces).isEmpty { fill() } }
+        .onChange(of: name) { fill() }
     }
 }
 
@@ -185,7 +276,10 @@ struct Reactions: ViewModifier {
                 if v == .exposed && m.exposure == nil { m.checkExposure() }
             }
             .onChange(of: m.mode) { m.portLevelChanged() }
-            .onAppear { m.loadPublicInfo() }
+            .onAppear {
+                m.loadPublicInfo()
+                if UserDefaults.standard.bool(forKey: "liveAtLaunch") && !m.started { m.liveScan() }
+            }
     }
 }
 

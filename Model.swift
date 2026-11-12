@@ -224,16 +224,18 @@ func ipv4(_ s: String) -> UInt32? {
 func ipv4(_ n: UInt32) -> String { "\(n >> 24).\(n >> 16 & 255).\(n >> 8 & 255).\(n & 255)" }
 
 struct Net: CustomStringConvertible {
-    let base: UInt32, prefix: Int
+    let base: UInt32, last: UInt32
+    let prefix: Int?  // nil for a custom From–To range
     init(_ ip: UInt32, _ prefix: Int) {
         self.prefix = prefix
         base = prefix == 0 ? 0 : ip & (~UInt32(0) << UInt32(32 - prefix))
+        last = base + UInt32(truncatingIfNeeded: (1 << (32 - prefix)) - 1)
     }
-    var size: Int { 1 << (32 - prefix) }
-    var last: UInt32 { base + UInt32(size - 1) }
-    var description: String { "\(ipv4(base))/\(prefix)" }
+    init(from: UInt32, to: UInt32) { base = from; last = to; prefix = nil }
+    var size: Int { Int(last - base) + 1 }
+    var description: String { prefix.map { "\(ipv4(base))/\($0)" } ?? "\(ipv4(base)) – \(ipv4(last))" }
     func contains(_ ip: UInt32) -> Bool { ip >= base && ip <= last }
-    var hosts: [UInt32] { prefix >= 31 ? Array(base...last) : Array((base + 1)..<last) }
+    var hosts: [UInt32] { if let p = prefix, p < 31 { return Array((base + 1)..<last) }; return Array(base...last) }
 }
 
 let privateNets = [("0.0.0.0", 8), ("10.0.0.0", 8), ("127.0.0.0", 8), ("169.254.0.0", 16), ("172.16.0.0", 12),
@@ -261,6 +263,17 @@ func parseNet(_ s: String) throws -> Net {
         throw ScanError("not a valid range: \(s)")
     }
     return try checkedNet(Net(ip, prefix))
+}
+
+// Blank From/To mean the first/last host of net; anything else narrows the scan inside it.
+func customRange(_ net: Net, _ from: String, _ to: String) throws -> Net {
+    let from = from.trimmingCharacters(in: .whitespaces), to = to.trimmingCharacters(in: .whitespaces)
+    if from.isEmpty && to.isEmpty { return net }
+    let all = Net(from: net.base, to: net.last), h = net.hosts
+    guard let lo = from.isEmpty ? h.first : ipv4(from), let hi = to.isEmpty ? h.last : ipv4(to) else { throw ScanError("From and To must be IPv4 addresses") }
+    guard all.contains(lo), all.contains(hi) else { throw ScanError("From and To must be inside \(net)") }
+    guard lo <= hi else { throw ScanError("From must not be after To") }
+    return Net(from: lo, to: hi)
 }
 
 func checkedNet(_ net: Net) throws -> Net {

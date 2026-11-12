@@ -1,3 +1,4 @@
+import SystemConfiguration
 // OtterScan's scanner: finds devices on the local network. No UI here; App.swift shows the results.
 import Foundation
 
@@ -39,18 +40,41 @@ func setTimeouts(_ s: Int32) {
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, size)
 }
 
-func interfaces() -> [(ip: UInt32, mask: UInt32)] {
+// "Wi-Fi", "Ethernet"... as System Settings names them; empty when macOS has no name for it
+func friendlyInterfaceNames() -> [String: String] {
+    var out = [String: String]()
+    for i in (SCNetworkInterfaceCopyAll() as? [SCNetworkInterface]) ?? [] {
+        if let bsd = SCNetworkInterfaceGetBSDName(i) as String?, let n = SCNetworkInterfaceGetLocalizedDisplayName(i) as String? { out[bsd] = n }
+    }
+    return out
+}
+
+struct Iface { let name: String, ip: UInt32, mask: UInt32, mac: String }
+
+func interfaces() -> [Iface] {
     var head: UnsafeMutablePointer<ifaddrs>?
     guard getifaddrs(&head) == 0 else { return [] }
     defer { freeifaddrs(head) }
-    var out = [(ip: UInt32, mask: UInt32)]()
     func value(_ sa: UnsafeMutablePointer<sockaddr>) -> UInt32 {
         sa.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { UInt32(bigEndian: $0.pointee.sin_addr.s_addr) }
     }
+    var macs = [String: String](), out = [Iface]()
     var p = head
     while let a = p {
+        let name = String(cString: a.pointee.ifa_name)
+        if let addr = a.pointee.ifa_addr, addr.pointee.sa_family == sa_family_t(AF_LINK) {
+            let raw = UnsafeRawPointer(addr)
+            let sdl = raw.assumingMemoryBound(to: sockaddr_dl.self).pointee
+            let at = raw.advanced(by: MemoryLayout<sockaddr_dl>.offset(of: \.sdl_data)! + Int(sdl.sdl_nlen))
+            macs[name] = (0..<Int(sdl.sdl_alen)).map { String(format: "%02x", at.load(fromByteOffset: $0, as: UInt8.self)) }.joined(separator: ":")
+        }
+        p = a.pointee.ifa_next
+    }
+    p = head
+    while let a = p {
         if let addr = a.pointee.ifa_addr, addr.pointee.sa_family == sa_family_t(AF_INET), let mask = a.pointee.ifa_netmask {
-            out.append((value(addr), value(mask)))
+            let name = String(cString: a.pointee.ifa_name)
+            out.append(Iface(name: name, ip: value(addr), mask: value(mask), mac: macs[name] ?? ""))
         }
         p = a.pointee.ifa_next
     }
@@ -67,6 +91,15 @@ func localNet() throws -> Net {
     guard withAddr(&me, { p, _ in getsockname(s, p, &len) }) == 0 else { throw ScanError(errorText()) }
     let ip = UInt32(bigEndian: me.sin_addr.s_addr)
     return Net(ip, interfaces().first { $0.ip == ip }?.mask.nonzeroBitCount ?? 24)
+}
+
+// The network to scan: the interface and optional From/To range picked in Settings, else this Mac's own subnet.
+func chosenNet() throws -> Net {
+    let d = UserDefaults.standard
+    var net = try localNet()
+    let name = d.string(forKey: "scanInterface") ?? ""
+    if let i = interfaces().first(where: { $0.name == name }) { net = Net(i.ip, i.mask.nonzeroBitCount) }  // a vanished interface falls back to automatic
+    return try checkedNet(try customRange(net, d.string(forKey: "scanFrom") ?? "", d.string(forKey: "scanTo") ?? ""))
 }
 
 // every interface, so scanning a second attached network still finds this Mac
