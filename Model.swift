@@ -206,6 +206,7 @@ func bugReportURL(version: String, build: String, os: String, arch: String) -> U
 struct Release: Equatable {
     let version: String
     let page: URL
+    var dmg: URL? = nil
 }
 
 // GitHub's answer comes off the network, so the page we offer to open must be on our own releases page.
@@ -215,7 +216,9 @@ func parseRelease(_ data: Data, status: Int) throws -> Release {
     guard let j = try JSONSerialization.jsonObject(with: data) as? [String: Any], let tag = j["tag_name"] as? String,
           !versionParts(tag).isEmpty else { throw ScanError("GitHub's answer wasn't a release") }
     let page = (j["html_url"] as? String).flatMap { $0.hasPrefix(RELEASES_PAGE + "/") ? URL(string: $0) : nil }
-    return Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, page: page ?? URL(string: RELEASES_PAGE + "/latest")!)
+    let dmg = (j["assets"] as? [[String: Any]])?.lazy.compactMap { $0["browser_download_url"] as? String }
+        .first { $0.hasPrefix(RELEASES_PAGE + "/download/") && $0.hasSuffix("/OtterScan.dmg") }.flatMap { URL(string: $0) }
+    return Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, page: page ?? URL(string: RELEASES_PAGE + "/latest")!, dmg: dmg)
 }
 
 // "v2.1.3" -> [2, 1, 3]. Anything after the digits of a part ("2.1-beta") is ignored.
