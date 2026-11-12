@@ -1,5 +1,5 @@
 # Builds OtterScan on a real Mac. Every push and pull request runs build.sh (tests + app build).
-# Pushing a tag like v2.1 also publishes OtterScan.dmg to that GitHub release.
+# Tags are only checked against the app version; releases are published by hand with the locally built DMG.
 name: build
 
 on:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # only the tag step uses this, to create the release
+  contents: read
 
 jobs:
   build:
@@ -47,10 +47,5 @@ jobs:
           name: OtterScan.dmg
           path: dist/OtterScan.dmg
 
-      - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "OtterScan ${GITHUB_REF_NAME#v}" --generate-notes
-          gh release upload "$GITHUB_REF_NAME" dist/OtterScan.dmg --clobber
+      # No release publishing here: this runner's older SDK gives the app the old macOS look, and it can't run make_dmg.sh.
+      # Releases ship the DMG built locally with ./build.sh && ./make_dmg.sh.
