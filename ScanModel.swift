@@ -13,6 +13,9 @@ final class ScanModel: ObservableObject {
     @Published var view = ViewKind.devices
     @Published var search = ""
     @Published var filters = Filters()
+    @Published var renaming: String?  // ip of the device whose name is being edited
+    @Published var newName = ""
+    var names = UserDefaults.standard.dictionary(forKey: "names") as? [String: String] ?? [:]  // custom names, by Device.key
     @Published var favourites = Set(UserDefaults.standard.stringArray(forKey: "favourites") ?? [])
     @Published var exposure: Exposure?
     @Published var exposureError: String?
@@ -185,9 +188,11 @@ final class ScanModel: ObservableObject {
             }
             if kept.count != rows.count || zip(kept, rows).contains(where: { $0.ping != $1.ping }) { rows = kept }
         case .row(var d):
+            if let n = names[d.key] { d.hostname = n }
             d.wait = Field.names.union(mode == .off ? [] : [.ports, .identification])
             if let i = index(d.ip) { rows[i] = d } else { rows.append(d) }
         case .update(var d):
+            if let n = names[d.key] { d.hostname = n }
             if let i = index(d.ip) {
                 d.ping = rows[i].ping
                 rows[i] = d
@@ -225,6 +230,20 @@ final class ScanModel: ObservableObject {
     }
 
     // MARK: actions on a device
+
+    func startRename(_ ip: String) {
+        guard let d = device(ip) else { return }
+        newName = d.hostname
+        renaming = ip
+    }
+
+    // An empty name clears the custom one; the real hostname comes back on the next scan.
+    func rename(_ ip: String, to name: String) {
+        guard let i = index(ip) else { return }
+        let name = name.trimmingCharacters(in: .whitespaces)
+        if name.isEmpty { names[rows[i].key] = nil } else { names[rows[i].key] = name; rows[i].hostname = name }
+        UserDefaults.standard.set(names, forKey: "names")
+    }
 
     func isFavourite(_ d: Device) -> Bool { favourites.contains(d.key) }
 
