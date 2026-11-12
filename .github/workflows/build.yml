@@ -15,10 +15,11 @@ permissions:
 jobs:
   build:
     runs-on: macos-15  # Apple Silicon, like the app's target
-    env:
-      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v4
+
+      # The runner context isn't allowed in job-level env, so set TMPDIR from a step.
+      - run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Build and test
         run: ./build.sh
