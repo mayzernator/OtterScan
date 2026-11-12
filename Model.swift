@@ -120,7 +120,7 @@ struct Device: Identifiable {
         case .hostname: return hostname
         case .ip: return ip
         case .host: return host
-        case .ping: return ping ? "Replied" : "No reply"
+        case .ping: return ping ? "Online" : "No reply"
         case .ports: return ports.map(\.label).joined(separator: ", ")
         case .mac: return mac
         case .ipv6_local: return ipv6Local
@@ -177,6 +177,31 @@ func publicIP(_ s: String) -> String? { ipv4(s).flatMap { isPrivate($0) ? nil : 
 
 let RELEASES_PAGE = "https://github.com/mayzernator/OtterScan/releases"
 let RELEASES_API = "https://api.github.com/repos/mayzernator/OtterScan/releases/latest"
+let NEW_ISSUE_PAGE = "https://github.com/mayzernator/OtterScan/issues/new"
+
+/// GitHub's new-issue page with a template to fill in. Carries only what is passed in: nothing about the network or its devices.
+func bugReportURL(version: String, build: String, os: String, arch: String) -> URL {
+    let body = """
+        ## What happened
+
+
+        ## What you expected
+
+
+        ## Steps to reproduce
+        1.
+
+        ## Environment
+        - OtterScan: \(version) (\(build))
+        - macOS: \(os)
+        - CPU: \(arch)
+
+        """
+    var c = URLComponents(string: NEW_ISSUE_PAGE)!
+    c.queryItems = [URLQueryItem(name: "title", value: ""), URLQueryItem(name: "body", value: body)]
+    c.percentEncodedQuery = c.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")  // URLComponents leaves "+", which a web form reads as a space
+    return c.url!
+}
 
 struct Release: Equatable {
     let version: String
@@ -218,6 +243,16 @@ enum ScanEvent {
     case seen(total: Int, seen: [String: Bool])
     case row(Device)
     case update(Device)
+}
+
+// A device (by Device.key) that is in one finished scan pass and not in the other. known: seen before, so not a newcomer.
+struct PresenceEvent: Equatable {
+    let key: String, joined: Bool, known: Bool
+}
+
+func presenceEvents(previous: Set<String>, current: Set<String>, known: Set<String>) -> [PresenceEvent] {
+    current.subtracting(previous).sorted().map { PresenceEvent(key: $0, joined: true, known: known.contains($0)) }
+        + previous.subtracting(current).sorted().map { PresenceEvent(key: $0, joined: false, known: known.contains($0)) }
 }
 
 // MARK: addresses

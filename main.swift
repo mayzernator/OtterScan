@@ -1,10 +1,18 @@
 // OtterScan: finds devices on your local network. `OtterScan --cli [CIDR] [--ports]` prints a table instead of opening the window.
 import SwiftUI
+import UserNotifications
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         prepareProcess()
         DispatchQueue.global().async { askForLocalNetwork() }  // so macOS asks for Local Network access right away
+        if Bundle.main.bundleIdentifier != nil { UNUserNotificationCenter.current().delegate = self }  // asks for nothing yet
+    }
+
+    // macOS hides an app's notifications while it is in front; show ours anyway.
+    func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification,
+                                withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
+        done([.banner, .list])
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
@@ -38,6 +46,18 @@ struct OtterScanApp: App {
                 }.keyboardShortcut("`")
                 Button(model.showDetails ? "Hide Details" : "Show Details") { model.showDetails.toggle() }.keyboardShortcut("b")
                 Divider()
+            }
+            CommandGroup(replacing: .help) {  // there is no help book for the default item to open
+                Button("Report a Bug…") {
+                    let info = { Bundle.main.object(forInfoDictionaryKey: $0) as? String ?? "?" }
+                    #if arch(arm64)
+                    let arch = "arm64"
+                    #else
+                    let arch = "x86_64"
+                    #endif
+                    NSWorkspace.shared.open(bugReportURL(version: info("CFBundleShortVersionString"), build: info("CFBundleVersion"),
+                                                         os: ProcessInfo.processInfo.operatingSystemVersionString, arch: arch))
+                }
             }
             CommandMenu("Scan") {
                 Button(model.running ? "Stop" : "Scan") { model.toggle() }.keyboardShortcut("s")

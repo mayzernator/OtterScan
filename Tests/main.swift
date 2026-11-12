@@ -119,6 +119,12 @@ var plain = [ScanEvent]()
 try events(net, find: { _ in [Found("10.0.0.1", A, true)] }, lookup: { f, _, _, emit in for x in f { emit(basic(x)) } }, emit: { plain.append($0) })
 check(plain.count == 3, "plain scan is one pass")
 
+// notifications: who joined and who left between two passes, and whether we had seen them before
+check(presenceEvents(previous: [A, B], current: [B, C, "10.0.0.9"], known: [A, B, "10.0.0.9"]) == [
+    PresenceEvent(key: C, joined: true, known: false), PresenceEvent(key: "10.0.0.9", joined: true, known: true),
+    PresenceEvent(key: A, joined: false, known: true)], "joined and left devices")
+check(presenceEvents(previous: [A], current: [A], known: []).isEmpty, "nothing changed, nothing to say")
+
 // Open in Browser: only http(s) to a private IPv4
 check((try? webURL("https://10.0.0.1:8443/admin"))?.absoluteString == "https://10.0.0.1:8443/admin", "private https url")
 for bad in ["", "file:///etc/passwd", "ftp://10.0.0.1/", "http://8.8.8.8/", "http://example.com/", "-a", "http://8.8.8.8\\@10.0.0.1/"] {
@@ -170,6 +176,14 @@ let elsewhere = Data(#"{"tag_name":"v2.1","html_url":"https://evil.example/downl
 check((try? parseRelease(elsewhere, status: 200))?.page.absoluteString == RELEASES_PAGE + "/latest", "foreign link is not offered")
 check((try? parseRelease(Data(#"{"tag_name":"nightly"}"#.utf8), status: 200)) == nil, "tag without a version")
 check((try? parseRelease(Data("nope".utf8), status: 200)) == nil && (try? parseRelease(release, status: 403)) == nil, "bad reply")
+
+// bug report: opens GitHub's new-issue page carrying the environment and nothing else
+let bug = bugReportURL(version: "2.1+beta", build: "42", os: "Version 15.1 (Build 24B83) & more", arch: "arm64")
+let bugBody = URLComponents(url: bug, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "body" }?.value ?? ""
+check(bug.scheme == "https" && bug.host == "github.com" && bug.path == "/mayzernator/OtterScan/issues/new", "bug report page")
+check(bugBody.contains("- OtterScan: 2.1+beta (42)\n- macOS: Version 15.1 (Build 24B83) & more\n- CPU: arm64\n"), "bug report environment survives the URL")
+check(!bug.absoluteString.contains("+") && bug.absoluteString.components(separatedBy: "&").count == 2, "bug report body is fully encoded")
+check(["## What happened", "## What you expected", "## Steps to reproduce", "## Environment"].allSatisfy(bugBody.contains), "bug report headings")
 
 // reading the kernel's neighbor tables must not crash, whatever they hold
 _ = arpTable(); _ = ndpTable()

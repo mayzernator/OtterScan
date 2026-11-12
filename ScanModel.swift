@@ -1,6 +1,21 @@
 // What the window shows and does. Scans run on their own threads and report back on the main thread.
 import SwiftUI
 import AppKit
+import UserNotifications
+
+// UNUserNotificationCenter traps in a bare binary, so both do nothing outside the app bundle.
+func askToNotify() {  // macOS only asks the first time; later calls change nothing
+    guard Bundle.main.bundleIdentifier != nil else { return }
+    UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+}
+
+func notify(_ title: String, _ body: String) {
+    guard Bundle.main.bundleIdentifier != nil else { return }
+    let c = UNMutableNotificationContent()
+    c.title = title
+    c.body = body
+    UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
+}
 
 enum ViewKind: String, CaseIterable { case devices, ports, exposed }
 
@@ -204,7 +219,36 @@ final class ScanModel: ObservableObject {
             message = (mode == .off ? "Looking up names... " : "Checking ports... ") + "\(done) of \(total ?? 0)"
         }
         if live && done == total { message = "Live: watching for changes" }
+        if done == total { passFinished() }
         fitColumnsOnce()
+    }
+
+    // MARK: notifications
+
+    private var lastPass = [String: Device]()  // the devices of the last finished pass, by Device.key
+    private var lastRange = ""
+    // Seen before this launch, or in the first scan of it. A newcomer stays "new" until the next launch.
+    // shortcut: "seenDevices" only ever grows; prune it if networks with rotating MACs make it large.
+    private var known = Set(UserDefaults.standard.stringArray(forKey: "seenDevices") ?? [])
+
+    // Every finished pass lands here: compare it with the one before and say who joined or left.
+    // A device is present while it pings or is still in the ARP cache (discover), so one missed ping is not a leave.
+    private func passFinished() {
+        let now = Dictionary(rows.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        let current = Set(now.keys)
+        if range != lastRange {
+            known.formUnion(current)  // first scan of this range: everything would "join"
+        } else {
+            for e in presenceEvents(previous: Set(lastPass.keys), current: current, known: known) {
+                guard let d = e.joined ? now[e.key] : lastPass[e.key],
+                      UserDefaults.standard.bool(forKey: "notify\(e.known ? "Known" : "New")\(e.joined ? "Join" : "Leave")") else { continue }
+                notify("\(d.hostname.isEmpty ? d.ip : d.hostname) \(e.joined ? "joined" : "left") the network",
+                       "\(e.known ? "Known" : "New") device · \(d.ip)" + (d.mac == "?" ? "" : " · \(d.mac)"))
+            }
+        }
+        (lastPass, lastRange) = (now, range)
+        let seen = Set(UserDefaults.standard.stringArray(forKey: "seenDevices") ?? [])
+        if !current.isSubset(of: seen) { UserDefaults.standard.set(Array(seen.union(current)), forKey: "seenDevices") }
     }
 
     func scanEveryPort(_ ip: String) {

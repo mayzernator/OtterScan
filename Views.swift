@@ -2,6 +2,8 @@
 import SwiftUI
 import AppKit
 
+let buyMeACoffeeURL: URL? = nil  // set to https://buymeacoffee.com/<handle> once the account exists; nil hides the Settings button
+
 // Sorts like the old page did: blanks stay at the bottom either way, ties fall back to IP address.
 struct FieldOrder: SortComparator, Hashable {
     var field: Field
@@ -168,6 +170,7 @@ struct PreferencesView: View {
             TabView {
                 GeneralPrefs().tabItem { Label("General", systemImage: "gearshape") }
                 ScanPrefs().tabItem { Label("Scan", systemImage: "network") }
+                NotificationPrefs().tabItem { Label("Notifications", systemImage: "bell") }
             }
             HStack {
                 Spacer()
@@ -177,6 +180,16 @@ struct PreferencesView: View {
         }
         .navigationTitle("OtterScan")
         .frame(width: 460)
+        .onAppear { applyStayOnTop() }  // Settings floats too, or the main window would cover it
+    }
+}
+
+// Stay on top: our normal windows (main and Settings) float above other apps. Async so a window that is just opening has attached.
+func applyStayOnTop() {
+    DispatchQueue.main.async {
+        let level: NSWindow.Level = UserDefaults.standard.bool(forKey: "stayOnTop") ? .floating : .normal
+        for w in NSApp.windows where w.level == .normal || w.level == .floating { w.level = level }
+        NSApp.keyWindow?.orderFront(nil)  // keep the window in use (Settings, when toggling) above the other
     }
 }
 
@@ -186,6 +199,7 @@ struct GeneralPrefs: View {
     @AppStorage("livePause") var pause = 5.0
     @AppStorage("autoDetails") var autoDetails = true
     @AppStorage("liveAtLaunch") var liveAtLaunch = true
+    @AppStorage("stayOnTop") var stayOnTop = false
 
     var body: some View {
         Form {
@@ -203,10 +217,41 @@ struct GeneralPrefs: View {
                 ForEach([5.0, 10, 30, 60], id: \.self) { Text("\(Int($0)) seconds").tag($0) }
             }
             Toggle("Open details when a device is selected", isOn: $autoDetails)
+            Toggle("Keep OtterScan on top of other windows", isOn: $stayOnTop)
+                .onChange(of: stayOnTop) { applyStayOnTop() }
+            if let buyMeACoffeeURL {
+                Link(destination: buyMeACoffeeURL) { Label("Buy Me a Coffee", systemImage: "cup.and.saucer.fill") }
+            }
         }
         .formStyle(.grouped)
         .scrollDisabled(true)  // fixed-height pane: nothing to scroll
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+struct NotificationPrefs: View {
+    @AppStorage("notifyNewJoin") var newJoin = false
+    @AppStorage("notifyNewLeave") var newLeave = false
+    @AppStorage("notifyKnownJoin") var knownJoin = false
+    @AppStorage("notifyKnownLeave") var knownLeave = false
+
+    var body: some View {
+        Form {
+            Section("New devices") {
+                Toggle("Notify when a new device joins the network", isOn: $newJoin)
+                Toggle("Notify when a new device leaves the network", isOn: $newLeave)
+            }
+            Section("Known devices") {
+                Toggle("Notify when a known device joins the network", isOn: $knownJoin)
+                Toggle("Notify when a known device leaves the network", isOn: $knownLeave)
+            }
+        }
+        .formStyle(.grouped)
+        .scrollDisabled(true)
+        .fixedSize(horizontal: false, vertical: true)
+        .onChange(of: [newJoin, newLeave, knownJoin, knownLeave]) {
+            if [newJoin, newLeave, knownJoin, knownLeave].contains(true) { askToNotify() }  // permission is asked for here, not at launch
+        }
     }
 }
 
@@ -318,6 +363,7 @@ struct Reactions: ViewModifier {
             .onChange(of: m.mode) { m.portLevelChanged() }
             .onAppear {
                 m.loadPublicInfo()
+                applyStayOnTop()
                 if UserDefaults.standard.bool(forKey: "liveAtLaunch") && !m.started { m.liveScan() }
             }
     }
@@ -412,7 +458,7 @@ struct ContentView: View {
             + ports.sorted { $0.key < $1.key }.map { ($0.value, .port($0.key)) }
         let vendors = Set(m.rows.map(\.vendor)).union(m.filters.vendor.map { [$0] } ?? []).filter { !$0.isEmpty }.sorted()
         let vendorChoices: [(String, String?)] = [("All", nil)] + vendors.map { ($0, $0) }
-        let pingChoices: [(String, Bool?)] = [("All", nil), ("Replied", true), ("No Reply", false)]
+        let pingChoices: [(String, Bool?)] = [("All", nil), ("Online", true), ("No Reply", false)]
 
         return VStack(spacing: 0) {
             HStack(spacing: 8) {
@@ -523,7 +569,7 @@ struct ContentView: View {
             Spinner()
         } else if f == .ping {
             Circle().fill(d.ping ? Color.green : Color.red).frame(width: 9, height: 9)
-                .accessibilityLabel(d.ping ? "Replied to ping" : "No ping reply")
+                .accessibilityLabel(d.ping ? "Online" : "No ping reply")
         } else if f == .ports {
             Text(d.ports.map { String($0.port) }.joined(separator: ", ")).font(.system(.callout, design: .monospaced))
                 .lineLimit(1).help(d.text(.ports))
@@ -652,7 +698,7 @@ struct ContentView: View {
                         }.buttonStyle(.link).help("Open in Safari")
                     }
                     LabeledContent("Ping") {
-                        Label(d.ping ? "Replied" : "No reply", systemImage: "circle.fill").foregroundStyle(d.ping ? .green : .red)
+                        Label(d.ping ? "Online" : "No reply", systemImage: "circle.fill").foregroundStyle(d.ping ? .green : .red)
                     }
                     // on its own line and left-aligned: as a right-hand value, its left edge moved with the width of the tags
                     VStack(alignment: .leading, spacing: 6) {
