@@ -3,13 +3,22 @@ import AppKit
 
 private var checking = false  // main thread only; stops a second click from stacking a second alert
 
-func checkForUpdates() {
+// At launch: at most one silent check a day, and only if the Settings toggle is on.
+func checkForUpdatesAtLaunch() {
+    let d = UserDefaults.standard
+    guard d.bool(forKey: "autoUpdate"), Date().timeIntervalSince(d.object(forKey: "lastUpdateCheck") as? Date ?? .distantPast) > 86400 else { return }
+    d.set(Date(), forKey: "lastUpdateCheck")
+    checkForUpdates(automatic: true)
+}
+
+// automatic: say nothing unless an update is available (no "up to date" or error alerts).
+func checkForUpdates(automatic: Bool = false) {
     #if FAKE_UPDATE  // test build only (SWIFTFLAGS=-DFAKE_UPDATE ./build.sh): offers the DMG at URL $FAKE_DMG as version 99.0
     if let dmg = ProcessInfo.processInfo.environment["FAKE_DMG"] {
         if ProcessInfo.processInfo.environment["FAKE_AUTO"] != nil {  // press Download by itself: tests no click is needed after it
             RunLoop.main.add(Timer(timeInterval: 2, repeats: false) { _ in NSApp.stopModal(withCode: .alertFirstButtonReturn) }, forMode: .common)
         }
-        return showUpdateResult(.success(Release(version: "99.0", page: URL(string: RELEASES_PAGE)!, dmg: URL(string: dmg)!)))
+        return showUpdateResult(.success(Release(version: "99.0", page: URL(string: RELEASES_PAGE)!, dmg: URL(string: dmg)!)), automatic: automatic)
     }
     #endif
     guard !checking, let url = URL(string: RELEASES_API) else { return }
@@ -24,12 +33,12 @@ func checkForUpdates() {
         }
         DispatchQueue.main.async {
             checking = false
-            showUpdateResult(result)
+            showUpdateResult(result, automatic: automatic)
         }
     }.resume()
 }
 
-private func showUpdateResult(_ result: Result<Release, Error>) {
+private func showUpdateResult(_ result: Result<Release, Error>, automatic: Bool) {
     let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
     let alert = NSAlert()
     var release: Release?
@@ -40,6 +49,7 @@ private func showUpdateResult(_ result: Result<Release, Error>) {
         alert.addButton(withTitle: "Download")
         alert.addButton(withTitle: "Later")
         release = r
+    case _ where automatic: return
     case .success:
         alert.messageText = "You're up to date"
         alert.informativeText = "OtterScan \(current) is the latest version."

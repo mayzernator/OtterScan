@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         prepareProcess()
         DispatchQueue.global().async { askForLocalNetwork() }  // so macOS asks for Local Network access right away
         if Bundle.main.bundleIdentifier != nil { UNUserNotificationCenter.current().delegate = self }  // asks for nothing yet
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { checkForUpdatesAtLaunch() }  // after the window is up
         #if FAKE_UPDATE
         if ProcessInfo.processInfo.environment["FAKE_AUTO"] != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { checkForUpdates() } }
         if ProcessInfo.processInfo.environment["FAKE_SETTINGS"] != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -92,5 +93,5 @@ if CommandLine.arguments.dropFirst().first == "--cli" {
     }
     exit(0)
 }
-UserDefaults.standard.register(defaults: ["defaultMode": "common", "livePause": 5.0, "autoDetails": true, "liveAtLaunch": true])
+UserDefaults.standard.register(defaults: ["defaultMode": "common", "livePause": 5.0, "autoDetails": true, "liveAtLaunch": true, "autoUpdate": true])
 OtterScanApp.main()

@@ -320,6 +320,19 @@ func customRange(_ net: Net, _ from: String, _ to: String) throws -> Net {
     return Net(from: lo, to: hi)
 }
 
+// From/To are remembered per network, one "network<TAB>from<TAB>to" line each, so a range set on one subnet never applies to another.
+func savedRange(_ net: Net, in raw: String) -> (from: String, to: String)? {
+    for line in raw.split(separator: "\n") {
+        let p = line.components(separatedBy: "\t")
+        if p.count == 3 && p[0] == net.description { return (p[1], p[2]) }
+    }
+    return nil
+}
+
+func settingRange(_ net: Net, _ from: String, _ to: String, in raw: String) -> String {
+    (raw.split(separator: "\n").map(String.init).filter { !$0.hasPrefix(net.description + "\t") } + ["\(net)\t\(from)\t\(to)"]).joined(separator: "\n")
+}
+
 func checkedNet(_ net: Net) throws -> Net {
     guard isPrivate(net.base), isPrivate(net.last) else { throw ScanError("OtterScan only scans private IPv4 ranges") }
     guard net.size <= 4096 else { throw ScanError("range too big (max /20)") }

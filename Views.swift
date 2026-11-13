@@ -286,6 +286,7 @@ struct GeneralPrefs: View {
     @AppStorage("autoDetails") var autoDetails = true
     @AppStorage("liveAtLaunch") var liveAtLaunch = true
     @AppStorage("stayOnTop") var stayOnTop = false
+    @AppStorage("autoUpdate") var autoUpdate = true
     @AppStorage("wrapText") var wrapText = false
     @AppStorage("friendlyPorts") var friendlyPorts = false
     let info = Bundle.main.infoDictionary ?? [:]
@@ -340,6 +341,10 @@ struct GeneralPrefs: View {
                 }.onChange(of: stayOnTop) { applyStayOnTop() }
             }
             Section("Updates") {
+                Toggle(isOn: $autoUpdate) {
+                    Text("Check for updates automatically")
+                    Text("Looks once a day at launch and only speaks up when there's a new version.")
+                }
                 LabeledContent("Version") {
                     HStack {
                         Text("\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))").foregroundStyle(.secondary)
@@ -385,10 +390,21 @@ struct NotificationPrefs: View {
 
 struct ScanPrefs: View {
     @AppStorage("scanInterface") var name = ""
-    @AppStorage("scanFrom") var from = ""
-    @AppStorage("scanTo") var to = ""
+    @AppStorage("scanRanges") var rangesRaw = ""  // From/To per network, see savedRange
     @AppStorage("savedRanges") var savedRaw = ""  // "from - to" entries, one per line (no @State: swiftc here has no macro plugin)
-    var saved: [String] { savedRaw.split(separator: "\n").map(String.init) }
+    var savedAll: [String] { savedRaw.split(separator: "\n").map(String.init) }
+    // only the saved ranges that fit this network, so another subnet's entries don't show up (or get applied) here
+    var saved: [String] {
+        guard let net else { return savedAll }
+        let all = Net(from: net.base, to: net.last)
+        return savedAll.filter { e in let p = e.components(separatedBy: " - "); return p.count == 2 && p.allSatisfy { ipv4($0).map(all.contains) ?? false } }
+    }
+    var range: (from: String, to: String) { net.flatMap { savedRange($0, in: rangesRaw) } ?? (firstHost, lastHost) }
+    var from: String { range.from }
+    var to: String { range.to }
+    func setRange(_ f: String, _ t: String) { if let net { rangesRaw = settingRange(net, f, t, in: rangesRaw) } }
+    var fromField: Binding<String> { Binding(get: { from }, set: { setRange($0, to) }) }
+    var toField: Binding<String> { Binding(get: { to }, set: { setRange(from, $0) }) }
     // Real LAN interfaces only: no loopback, link-local or public addresses
     let names = friendlyInterfaceNames()
     let ifaces = interfaces().filter { isPrivate($0.ip) && ipv4($0.ip).hasPrefix("127.") == false && ipv4($0.ip).hasPrefix("169.254.") == false }
@@ -404,13 +420,13 @@ struct ScanPrefs: View {
     var selected: Binding<String> {
         Binding(get: { saved.contains(current) ? current : "" }, set: { s in
             let p = s.components(separatedBy: " - ")
-            if p.count == 2 { from = p[0]; to = p[1] }
+            if p.count == 2 { setRange(p[0], p[1]) }
         })
     }
     var firstHost: String { net.map { ipv4($0.hosts.first ?? $0.base) } ?? "" }
     var lastHost: String { net.map { ipv4($0.hosts.last ?? $0.last) } ?? "" }
-    func fill() { from = firstHost; to = lastHost }  // real values, not placeholders, so typing edits them
-    func store(_ list: [String]) { savedRaw = list.joined(separator: "\n") }
+    func fill() { setRange(firstHost, lastHost) }  // real values, not placeholders, so typing edits them
+    func store(_ list: [String]) { savedRaw = (savedAll.filter { !saved.contains($0) } + list).joined(separator: "\n") }
 
     var body: some View {
         Form {
@@ -434,8 +450,8 @@ struct ScanPrefs: View {
                     Button { store(saved.filter { $0 != selected.wrappedValue }) } label: { Image(systemName: "trash") }
                         .disabled(selected.wrappedValue.isEmpty).help("Delete the selected saved range")
                 }
-                TextField("From", text: $from)
-                TextField("To", text: $to)
+                TextField("From", text: fromField)
+                TextField("To", text: toField)
                 HStack {
                     if let problem { Text(problem).foregroundStyle(.red).font(.caption) }
                     Spacer()
@@ -449,8 +465,6 @@ struct ScanPrefs: View {
         .formStyle(.grouped)
         .scrollDisabled(true)
         .fixedSize(horizontal: false, vertical: true)
-        .onAppear { if from.trimmingCharacters(in: .whitespaces).isEmpty || to.trimmingCharacters(in: .whitespaces).isEmpty { fill() } }
-        .onChange(of: name) { fill() }
     }
 }
 

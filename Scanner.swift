@@ -99,7 +99,8 @@ func chosenNet() throws -> Net {
     var net = try localNet()
     let name = d.string(forKey: "scanInterface") ?? ""
     if let i = interfaces().first(where: { $0.name == name }) { net = Net(i.ip, i.mask.nonzeroBitCount) }  // a vanished interface falls back to automatic
-    return try checkedNet(try customRange(net, d.string(forKey: "scanFrom") ?? "", d.string(forKey: "scanTo") ?? ""))
+    let r = savedRange(net, in: d.string(forKey: "scanRanges") ?? "")  // None for a network never customised: scan all of it
+    return try checkedNet(try customRange(net, r?.from ?? "", r?.to ?? ""))
 }
 
 // every interface, so scanning a second attached network still finds this Mac

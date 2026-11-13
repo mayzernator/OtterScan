@@ -9,6 +9,14 @@ func check(_ ok: Bool, _ what: String, line: Int = #line) {
 check(vendor("?") == "", "unknown mac has no vendor")
 check(vendor("8a:81:16:75:ee:f8") == "Private address", "locally administered bit")
 check(displayName("Mays-MacBook-Pro.local") == "Mays MacBook Pro", "device name display")
+do {
+    let a = Net(ipv4("10.0.0.5")!, 24), b = Net(ipv4("192.168.1.5")!, 24)
+    var raw = settingRange(a, "10.0.0.10", "10.0.0.20", in: "")
+    raw = settingRange(b, "192.168.1.2", "192.168.1.9", in: raw)
+    raw = settingRange(a, "10.0.0.11", "10.0.0.30", in: raw)  // replaces a's line, keeps b's
+    check(savedRange(a, in: raw)?.from == "10.0.0.11" && savedRange(b, in: raw)?.to == "192.168.1.9", "range per network")
+    check(savedRange(Net(ipv4("172.16.0.1")!, 24), in: raw) == nil, "unknown network has no range")
+}
 check(displayName("192.168.1.5") == "192.168.1.5", "IP left alone")
 check(displayName("Mays-iPhone.local.") == "Mays iPhone", "trailing-dot mDNS name")
 check(checksum(ECHO) == 0, "ping packet checksum")
