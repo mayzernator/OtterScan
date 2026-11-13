@@ -143,6 +143,32 @@ final class ScanModel: ObservableObject {
     }
 
     // Picking a port level applies straight away instead of waiting for the next scan.
+    // Arrow keys move the selection around the Ports cards. cardGrid (ips by column) is filled by the view as it lays the cards out.
+    var cardGrid: [[String]] = []
+    private var arrowMonitor: Any?
+
+    func installArrowKeys() {
+        guard arrowMonitor == nil else { return }
+        let dirs: [UInt16: (Int, Int)] = [123: (-1, 0), 124: (1, 0), 125: (0, 1), 126: (0, -1)]
+        arrowMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            // only the main window, and not while typing in a field (search, note, name)
+            guard let self, self.view == .ports, e.window?.title == "OtterScan", !(e.window?.firstResponder is NSText),
+                  e.modifierFlags.intersection([.command, .option, .control]).isEmpty, let d = dirs[e.keyCode] else { return e }
+            self.moveCard(d.0, d.1)
+            return nil
+        }
+    }
+
+    private func moveCard(_ dx: Int, _ dy: Int) {
+        guard let first = cardGrid.first?.first else { return }
+        guard let sel = selection, let c = cardGrid.firstIndex(where: { $0.contains(sel) }), let r = cardGrid[c].firstIndex(of: sel) else {
+            selection = first; return
+        }
+        let c2 = min(max(c + dx, 0), cardGrid.count - 1)
+        let r2 = dx != 0 ? min(r, cardGrid[c2].count - 1) : min(max(r + dy, 0), cardGrid[c].count - 1)
+        selection = cardGrid[c2][r2]
+    }
+
     func portLevelChanged() {
         guard mode != .off, running || !rows.isEmpty else { return }
         if let stop { stop.set(); finish("") }

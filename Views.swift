@@ -310,16 +310,16 @@ struct GeneralPrefs: View {
                     Text("Scan type")
                     Text("Live Scan keeps rescanning so you see devices come and go.")
                 }
-                Picker(selection: $mode) { Text("Off").tag("off"); Text("Common").tag("common"); Text("All (slow)").tag("all") } label: {
-                    Text("Port check")
-                    Text("Which ports to check on each device.")
-                }
                 Picker(selection: $pause) { ForEach([5.0, 10, 30, 60], id: \.self) { Text("\(Int($0)) seconds").tag($0) } } label: {
                     Text("Live Scan checks every")
                     Text("Shorter notices changes sooner but makes more network traffic.")
                 }
             }
             Section("Device Table") {
+                Picker(selection: $mode) { Text("Off").tag("off"); Text("Common").tag("common"); Text("All (slow)").tag("all") } label: {
+                    Text("Port check")
+                    Text("Which ports to check on each device. Changing it rescans.")
+                }
                 Toggle(isOn: $autoDetails) {
                     Text("Open details on select")
                     Text("Shows the details panel when you pick a device.")
@@ -491,6 +491,7 @@ struct Reactions: ViewModifier {
             .onChange(of: m.mode) { m.portLevelChanged() }
             .onAppear {
                 m.loadPublicInfo()
+                m.installArrowKeys()
                 applyStayOnTop()
                 if UserDefaults.standard.bool(forKey: "liveAtLaunch") && !m.started { m.liveScan() }
             }
@@ -499,6 +500,7 @@ struct Reactions: ViewModifier {
 
 struct ContentView: View {
     @EnvironmentObject var m: ScanModel
+    @AppStorage("defaultMode") var portCheck = "common"
     @AppStorage("wrapText") var wrapText = false
     @AppStorage("friendlyPorts") var friendlyPorts = false
     var shown: [Device] {
@@ -516,7 +518,10 @@ struct ContentView: View {
     }
 
     // Split in two: one long chain of modifiers is more than the type checker will take.
-    var body: some View { chrome.modifier(Reactions(m: m)) }
+    var body: some View {
+        chrome.modifier(Reactions(m: m))
+            .onChange(of: portCheck) { m.mode = Mode(rawValue: portCheck) ?? .common }  // the Settings picker applies live (Reactions rescans)
+    }
 
     var chrome: some View {
         let rows = shown
@@ -566,12 +571,10 @@ struct ContentView: View {
             } primaryAction: { m.toggle() }
             Button { m.start() } label: { Label("Scan Again", systemImage: "arrow.clockwise") }
                 .disabled(m.running || m.live || !m.started).help("Scan again")
-            dropdown("Check Ports", $m.mode, [("Off", Mode.off), ("Common", .common), ("All (slow)", .all)])
-                .help("Which ports to check on each device. Changing this rescans.")
             Picker("View", selection: $m.view) {
                 Text("Devices").tag(ViewKind.devices)
                 Text("Ports").tag(ViewKind.ports)
-                Text("Public").tag(ViewKind.exposed)
+                // Public tab hidden for now (the view and Shodan lookup stay in place): Text("Public").tag(ViewKind.exposed)
             }.pickerStyle(.segmented)
         }
         ToolbarItem {
@@ -716,12 +719,17 @@ struct ContentView: View {
     func cards(_ rows: [Device]) -> some View {
         GeometryReader { geo in
             let n = max(1, Int((geo.size.width - 20) / 332))  // 320 wide + 12 spacing, inside 16 padding
-            ScrollView {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(cardColumns(rows, n), id: \.first?.ip) { column in
-                        LazyVStack(spacing: 12) { ForEach(column) { card($0) } }
-                    }
-                }.padding(16)
+            let columns = cardColumns(rows, n)
+            let _ = { m.cardGrid = columns.map { $0.map(\.ip) } }()  // for arrow-key navigation (not published, so safe in body)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(columns, id: \.first?.ip) { column in
+                            LazyVStack(spacing: 12) { ForEach(column) { card($0).id($0.ip) } }
+                        }
+                    }.padding(16)
+                }
+                .onChange(of: m.selection) { _, ip in if let ip { proxy.scrollTo(ip) } }
             }
         }
     }
