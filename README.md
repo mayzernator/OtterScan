@@ -25,25 +25,6 @@ Needs only the Xcode Command Line Tools (`xcode-select --install`).
 `make_dmg.sh` drives Finder to lay out the window, so macOS may ask once to let Terminal control Finder.
 The blueprint background is drawn by `make_dmg_bg.swift`.
 
-## Keyboard shortcuts
-### Scan
-
-⌘ + S - One time scan
-
-⌘ + R - Edit hostname of the selected device
-
-⌘ + L - Live scan
-
-⌘ + P - Print the list (Devices and Ports views)
-
-### Tabs
-
-⌘ + 1 - Devices
-
-⌘ + 2 - Ports (local)
-
-⌘ + 3 - Public (ports)
-
-⌘ + ` - Next view
-
-⌘ + B - Hide details
+## Coming soon...
+- Auto updates
+- iPhone app (testFlight)
