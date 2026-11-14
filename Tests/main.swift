@@ -209,6 +209,9 @@ do {
     check(csv.hasPrefix("Device,IPv4 Address,"), "csv header")
     check(csv.contains("\"say \"\"hi\"\"\nthere\",10.0.0.5,"), "csv quotes quotes and newlines")
     check(csv.contains("\"Acme, Inc\""), "csv quotes commas")
+    d.note = "=HYPERLINK(\"http://x\")"
+    check(exportText([d], json: false).contains("\"'=HYPERLINK(\"\"http://x\"\")\""), "csv defuses formulas")
+    check(exportText([d], json: true).contains("\"=HYPERLINK("), "json leaves formulas alone")
     d.note = "a\r\nb"
     check(exportText([d], json: false).contains("\"a\r\nb\""), "csv quotes CRLF")
     let obj = (try? JSONSerialization.jsonObject(with: Data(exportText([d], json: true).utf8))) as? [[String: String]]

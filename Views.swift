@@ -570,7 +570,7 @@ struct ContentView: View {
             printList(m.view == .ports ? shown.filter { !$0.ports.isEmpty } : shown)
         }
         .onReceive(NotificationCenter.default.publisher(for: .exportList)) { _ in
-            exportList(m.view == .ports ? shown.filter { !$0.ports.isEmpty } : shown)
+            exportList(m, m.view == .ports ? shown.filter { !$0.ports.isEmpty } : shown)
         }
         .onReceive(NotificationCenter.default.publisher(for: .openDevice)) { n in
             m.view = .devices
@@ -933,12 +933,14 @@ extension Notification.Name {
 }
 
 // Saves the rows on screen (after search and filters) as CSV or JSON, whichever the file name ends in.
-func exportList(_ rows: [Device]) {
+func exportList(_ m: ScanModel, _ rows: [Device]) {
     let panel = NSSavePanel()
     panel.allowedContentTypes = [.commaSeparatedText, .json]
     panel.nameFieldStringValue = "OtterScan.csv"
     guard panel.runModal() == .OK, let url = panel.url else { return }
-    try? exportText(rows, json: url.pathExtension.lowercased() == "json").write(to: url, atomically: true, encoding: .utf8)
+    do { try exportText(rows, json: url.pathExtension.lowercased() == "json").write(to: url, atomically: true, encoding: .utf8) } catch {
+        m.message = "Could not save export: \(error.localizedDescription)"
+    }
 }
 
 // Prints the rows on screen (after search and filters) as a plain monospaced table, landscape.

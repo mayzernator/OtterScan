@@ -431,6 +431,9 @@ func exportText(_ rows: [Device], json: Bool) -> String {
         let data = try? JSONSerialization.data(withJSONObject: objs, options: [.prettyPrinted, .sortedKeys])
         return data.flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
     }
-    func q(_ s: String) -> String { s.unicodeScalars.contains { ",\"\n\r".unicodeScalars.contains($0) } ? "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : s }
+    // A cell starting with = + - @ tab or CR is a formula to Excel/Numbers, and names come from the LAN, so defuse it with a leading '.
+    func q(_ s0: String) -> String {
+        let s = s0.unicodeScalars.first.map { "=+-@\t\r".unicodeScalars.contains($0) } == true ? "'" + s0 : s0
+        return s.unicodeScalars.contains { ",\"\n\r".unicodeScalars.contains($0) } ? "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : s }
     return ([Field.allCases.map(\.title)] + rows.map { d in Field.allCases.map { d.text($0) } }).map { $0.map(q).joined(separator: ",") }.joined(separator: "\n") + "\n"
 }
