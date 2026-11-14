@@ -18,7 +18,7 @@ func checkForUpdates(automatic: Bool = false) {
         if ProcessInfo.processInfo.environment["FAKE_AUTO"] != nil {  // press Download by itself: tests no click is needed after it
             RunLoop.main.add(Timer(timeInterval: 2, repeats: false) { _ in NSApp.stopModal(withCode: .alertFirstButtonReturn) }, forMode: .common)
         }
-        return showUpdateResult(.success(Release(version: "99.0", page: URL(string: RELEASES_PAGE)!, dmg: URL(string: dmg)!)), automatic: automatic)
+        return showUpdateResult(.success(Release(version: "99.0", page: URL(string: RELEASES_PAGE)!, dmg: URL(string: dmg)!, notes: "Fixes **OtterScan** quitting on big networks. Nothing else changed.")), automatic: automatic)
     }
     #endif
     guard !checking, let url = URL(string: RELEASES_API) else { return }
@@ -40,15 +40,13 @@ func checkForUpdates(automatic: Bool = false) {
 
 private func showUpdateResult(_ result: Result<Release, Error>, automatic: Bool) {
     let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+    let d = UserDefaults.standard
     let alert = NSAlert()
-    var release: Release?
     switch result {
     case .success(let r) where isNewer(r.version, than: current):
-        alert.messageText = "Update available!"
-        alert.informativeText = "\(current) -> \(r.version)"
-        alert.addButton(withTitle: "Download")
-        alert.addButton(withTitle: "Later")
-        release = r
+        if automatic && d.string(forKey: "skippedVersion") == r.version { return }  // a manual check still offers it
+        if automatic && d.bool(forKey: "autoInstall"), let dmg = r.dmg { return install(dmg, version: r.version) }
+        return promptForUpdate(r, current: current)
     case _ where automatic: return
     case .success:
         alert.messageText = "You're up to date"
@@ -58,10 +56,118 @@ private func showUpdateResult(_ result: Result<Release, Error>, automatic: Bool)
         alert.informativeText = e.localizedDescription
     }
     NSApp.activate()
-    guard alert.runModal() == .alertFirstButtonReturn, let release else { return }
-    guard let dmg = release.dmg else { NSWorkspace.shared.open(release.page); return }
-    install(dmg, version: release.version)
+    alert.runModal()
 }
+
+// A plain grey window laid out like Sparkle's, not an NSAlert: an alert is glass in macOS 26 and stacks its buttons.
+private func promptForUpdate(_ release: Release, current: String) {
+    let d = UserDefaults.standard
+    let icon = NSImageView(image: NSApp.applicationIconImage)
+    icon.widthAnchor.constraint(equalToConstant: 64).isActive = true
+    icon.heightAnchor.constraint(equalToConstant: 64).isActive = true
+    let title = NSTextField(labelWithString: "A new version of OtterScan is available!")
+    title.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+    let info = NSTextField(wrappingLabelWithString: "OtterScan \(release.version) is now available—you have \(current). Would you like to download it now?")
+    info.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    let heading = NSStackView(views: [title, info])
+    heading.orientation = .vertical; heading.alignment = .leading; heading.spacing = 6
+    let top = NSStackView(views: [icon, heading])
+    top.alignment = .centerY; top.spacing = 16
+
+    // Release notes, as GitHub's Markdown
+    let notes = NSTextView()
+    notes.isEditable = false
+    notes.textContainerInset = NSSize(width: 8, height: 10)
+    let md = release.notes.isEmpty ? "No release notes." : release.notes
+    let text = (try? NSMutableAttributedString(markdown: md, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+        ?? NSMutableAttributedString(string: md)
+    text.addAttributes([.font: NSFont.systemFont(ofSize: NSFont.systemFontSize), .foregroundColor: NSColor.labelColor],
+                       range: NSRange(location: 0, length: text.length))
+    notes.textStorage?.setAttributedString(text)
+    let scroll = NSScrollView()
+    scroll.hasVerticalScroller = true
+    scroll.borderType = .lineBorder
+    notes.autoresizingMask = .width
+    scroll.documentView = notes
+    scroll.heightAnchor.constraint(equalToConstant: 200).isActive = true
+
+    let auto = NSButton(checkboxWithTitle: "Automatically download and install updates in the future", target: nil, action: nil)
+    auto.controlSize = .small; auto.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    auto.state = d.bool(forKey: "autoInstall") ? .on : .off
+    // A borderless link, like the "Learn More" links in System Settings
+    let github = NSButton(title: "View on GitHub", target: modalPicker, action: #selector(ModalPicker.open(_:)))
+    github.isBordered = false
+    github.image = githubMark
+    github.imagePosition = .imageLeading
+    github.contentTintColor = .linkColor
+    github.controlSize = .small; github.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    github.toolTip = release.page.absoluteString
+    modalPicker.page = release.page
+    let options = NSStackView(views: [auto, NSView(), github])
+    func button(_ title: String, _ code: NSApplication.ModalResponse, _ key: String = "") -> NSButton {
+        let b = NSButton(title: title, target: modalPicker, action: #selector(ModalPicker.pick(_:)))
+        b.tag = code.rawValue; b.keyEquivalent = key
+        return b
+    }
+    let buttons = NSStackView(views: [button("Skip This Version", .alertThirdButtonReturn), NSView(),
+                                      button("Remind Me Later", .alertSecondButtonReturn, "\u{1b}"),
+                                      button("Install Update", .alertFirstButtonReturn, "\r")])
+
+    let stack = NSStackView(views: [top, scroll, options, buttons])
+    stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 14
+    stack.setCustomSpacing(10, after: scroll)
+    for v in [top, scroll, options, buttons] { v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+    stack.widthAnchor.constraint(equalToConstant: 540).isActive = true
+    let content = NSView()
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    content.addSubview(stack)
+    NSLayoutConstraint.activate([
+        stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 4),  // the hidden title bar already leaves room above the icon,
+        stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -20),
+        stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
+        stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20)])
+    content.layoutSubtreeIfNeeded()
+
+    // Not resizable, so zoom shows greyed out like Sparkle's
+    let w = NSWindow(contentRect: NSRect(origin: .zero, size: content.fittingSize), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+    w.isReleasedWhenClosed = false
+    w.title = "Software Update"
+    w.titleVisibility = .hidden; w.titlebarAppearsTransparent = true
+    w.hidesOnDeactivate = false
+    w.contentView = content
+    NSApp.activate()
+    w.center(); w.makeKeyAndOrderFront(nil)
+    // The close button counts as Remind Me Later; without this the modal session outlives its window
+    let closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: nil) { _ in
+        NSApp.stopModal(withCode: .alertSecondButtonReturn)
+    }
+    let choice = NSApp.runModal(for: w)
+    NotificationCenter.default.removeObserver(closing)
+    w.close()
+    d.set(auto.state == .on, forKey: "autoInstall")
+    switch choice {
+    case .alertFirstButtonReturn:
+        guard let dmg = release.dmg else { NSWorkspace.shared.open(release.page); return }
+        install(dmg, version: release.version)
+    case .alertThirdButtonReturn: d.set(release.version, forKey: "skippedVersion")
+    default: break  // Remind Me Later: the next daily check asks again
+    }
+}
+
+private final class ModalPicker: NSObject {
+    var page: URL?
+    @objc func pick(_ b: NSButton) { NSApp.stopModal(withCode: .init(b.tag)) }
+    @objc func open(_ b: NSButton) { if let page { NSWorkspace.shared.open(page) } }
+}
+private let modalPicker = ModalPicker()
+
+// GitHub's mark (Octicons, 16 pt), as a template image so it takes the link colour
+private let githubMark: NSImage? = {
+    let svg = #"<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>"#
+    let image = NSImage(data: Data(svg.utf8))
+    image?.isTemplate = true
+    return image
+}()  // buttons hold their target weakly
 
 // A URLSession download carries no quarantine flag, so Gatekeeper never asks for "Open Anyway".
 // A plain window with a progress bar, not a modal alert: a modal session holds off terminate until it is clicked away.

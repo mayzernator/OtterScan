@@ -187,6 +187,7 @@ let elsewhere = Data(#"{"tag_name":"v2.1","html_url":"https://evil.example/downl
 let withDmg = Data(#"{"tag_name":"v2.2","assets":[{"browser_download_url":"https://evil.example/OtterScan.dmg"},{"browser_download_url":"\#(RELEASES_PAGE)/download/v2.2/OtterScan.dmg"}]}"#.utf8)
 check((try? parseRelease(withDmg, status: 200))?.dmg?.absoluteString == RELEASES_PAGE + "/download/v2.2/OtterScan.dmg", "dmg asset on our own releases only")
 let versioned = Data(#"{"tag_name":"v2.4.3","assets":[{"browser_download_url":"\#(RELEASES_PAGE)/download/v2.4.3/OtterScan-2.4.3.dmg"}]}"#.utf8)
+check((try? parseRelease(Data(#"{"tag_name":"v2.5","body":"  Fixes things.\n"}"#.utf8), status: 200))?.notes == "Fixes things.", "release notes")
 check((try? parseRelease(versioned, status: 200))?.dmg?.lastPathComponent == "OtterScan-2.4.3.dmg", "versioned dmg name is found")
 check((try? parseRelease(elsewhere, status: 200))?.page.absoluteString == RELEASES_PAGE + "/latest", "foreign link is not offered")
 check((try? parseRelease(Data(#"{"tag_name":"nightly"}"#.utf8), status: 200)) == nil, "tag without a version")

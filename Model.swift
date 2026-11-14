@@ -207,6 +207,7 @@ struct Release: Equatable {
     let version: String
     let page: URL
     var dmg: URL? = nil
+    var notes = ""  // the release's description on GitHub, shown in the update prompt
 }
 
 // GitHub's answer comes off the network, so the page we offer to open must be on our own releases page.
@@ -218,7 +219,8 @@ func parseRelease(_ data: Data, status: Int) throws -> Release {
     let page = (j["html_url"] as? String).flatMap { $0.hasPrefix(RELEASES_PAGE + "/") ? URL(string: $0) : nil }
     let dmg = (j["assets"] as? [[String: Any]])?.lazy.compactMap { $0["browser_download_url"] as? String }
         .first { $0.hasPrefix(RELEASES_PAGE + "/download/") && $0.hasSuffix(".dmg") && URL(string: $0)?.lastPathComponent.hasPrefix("OtterScan") == true }.flatMap { URL(string: $0) }
-    return Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, page: page ?? URL(string: RELEASES_PAGE + "/latest")!, dmg: dmg)
+    return Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, page: page ?? URL(string: RELEASES_PAGE + "/latest")!, dmg: dmg,
+                   notes: (j["body"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
 }
 
 // "v2.1.3" -> [2, 1, 3]. Anything after the digits of a part ("2.1-beta") is ignored.
