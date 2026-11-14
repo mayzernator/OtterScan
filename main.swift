@@ -1,4 +1,4 @@
-// OtterScan: finds devices on your local network. `OtterScan --cli [CIDR] [--ports]` prints a table instead of opening the window.
+// OtterScan: finds devices on your local network. `OtterScan --cli [CIDR] [--ports] [--csv|--json]` prints a table (or CSV/JSON) instead of opening the window.
 import SwiftUI
 import UserNotifications
 
@@ -53,6 +53,10 @@ struct OtterScanApp: App {
             CommandGroup(replacing: .printItem) {
                 Button("Print…") { NotificationCenter.default.post(name: .printList, object: nil) }
                     .keyboardShortcut("p").disabled(model.view == .exposed)
+            }
+            CommandGroup(after: .printItem) {
+                Button("Export…") { NotificationCenter.default.post(name: .exportList, object: nil) }
+                    .keyboardShortcut("e").disabled(model.view == .exposed)
             }
             CommandGroup(before: .toolbar) {
                 Button("Devices") { model.view = .devices }.keyboardShortcut("1")

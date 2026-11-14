@@ -569,6 +569,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .printList)) { _ in
             printList(m.view == .ports ? shown.filter { !$0.ports.isEmpty } : shown)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .exportList)) { _ in
+            exportList(m.view == .ports ? shown.filter { !$0.ports.isEmpty } : shown)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openDevice)) { n in
             m.view = .devices
             m.selection = n.object as? String
@@ -925,7 +928,17 @@ struct ContentView: View {
 
 extension Notification.Name {
     static let printList = Notification.Name("printList")
+    static let exportList = Notification.Name("exportList")
     static let openDevice = Notification.Name("openDevice")  // object: the device's IP
+}
+
+// Saves the rows on screen (after search and filters) as CSV or JSON, whichever the file name ends in.
+func exportList(_ rows: [Device]) {
+    let panel = NSSavePanel()
+    panel.allowedContentTypes = [.commaSeparatedText, .json]
+    panel.nameFieldStringValue = "OtterScan.csv"
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    try? exportText(rows, json: url.pathExtension.lowercased() == "json").write(to: url, atomically: true, encoding: .utf8)
 }
 
 // Prints the rows on screen (after search and filters) as a plain monospaced table, landscape.

@@ -201,6 +201,20 @@ check(bugBody.contains("- OtterScan: 2.1+beta (42)\n- macOS: Version 15.1 (Build
 check(!bug.absoluteString.contains("+") && bug.absoluteString.components(separatedBy: "&").count == 2, "bug report body is fully encoded")
 check(["## What happened", "## What you expected", "## Steps to reproduce", "## Environment"].allSatisfy(bugBody.contains), "bug report headings")
 
+// export: CSV quotes commas, quotes and newlines; JSON carries every field
+do {
+    var d = Device(ip: "10.0.0.5", mac: "aa:bb", ping: true, ipv6Local: "", ipv6Global: "", vendor: "Acme, Inc")
+    d.hostname = "say \"hi\"\nthere"
+    let csv = exportText([d], json: false)
+    check(csv.hasPrefix("Device,IPv4 Address,"), "csv header")
+    check(csv.contains("\"say \"\"hi\"\"\nthere\",10.0.0.5,"), "csv quotes quotes and newlines")
+    check(csv.contains("\"Acme, Inc\""), "csv quotes commas")
+    d.note = "a\r\nb"
+    check(exportText([d], json: false).contains("\"a\r\nb\""), "csv quotes CRLF")
+    let obj = (try? JSONSerialization.jsonObject(with: Data(exportText([d], json: true).utf8))) as? [[String: String]]
+    check(obj?.first?["ip"] == "10.0.0.5" && obj?.first?["hostname"] == "say \"hi\"\nthere" && obj?.first?["ping"] == "Online", "json output")
+}
+
 // reading the kernel's neighbor tables must not crash, whatever they hold
 _ = arpTable(); _ = ndpTable()
 

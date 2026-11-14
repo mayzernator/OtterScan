@@ -567,17 +567,20 @@ func events(_ net: Net, _ mode: Mode = .off, live: Bool = false, stop: Stop = St
     }
 }
 
-// Usage: OtterScan --cli [CIDR] [--ports | --all-ports]   (default: your subnet)
+// Usage: OtterScan --cli [CIDR] [--ports | --all-ports] [--csv | --json]   (default: your subnet)
 func runCLI(_ args: [String]) throws {
     prepareProcess()
     let plain = args.filter { !$0.hasPrefix("--") }
     let net = try plain.first.map(parseNet) ?? localNet()
-    print("Scanning \(net) ...")
+    let csv = args.contains("--csv"), json = args.contains("--json")
+    if !csv && !json { print("Scanning \(net) ...") }  // keep stdout clean for export
     let mode: Mode = args.contains("--all-ports") ? .all : args.contains("--ports") ? .common : .off
     var rows = [Device]()
     try details(try discover(net), mode, Stop()) { rows.append($0) }
     func cell(_ s: String, _ w: Int) -> String { s.count >= w ? s : s + String(repeating: " ", count: w - s.count) }
-    for d in rows.sorted(by: { (ipv4($0.ip) ?? 0) < (ipv4($1.ip) ?? 0) }) {
+    rows.sort { (ipv4($0.ip) ?? 0) < (ipv4($1.ip) ?? 0) }
+    if csv || json { print(exportText(rows, json: json), terminator: csv ? "" : "\n"); return }
+    for d in rows {
         print(cell(d.ip, 16) + cell(d.mac, 19) + cell(d.hostname, 42) + cell(d.vendor, 30) + d.text(.ports))
     }
 }

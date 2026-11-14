@@ -423,3 +423,14 @@ func basic(_ f: Found) -> Device {  // what we know instantly; names can take 30
     let v = vendor(f.mac)
     return Device(ip: f.ip, mac: f.mac, ping: f.ping, ipv6Local: f.v6.local, ipv6Global: f.v6.global, vendor: v, kind: deviceKind(v))
 }
+
+// One shared export for the app's Export… and the CLI's --csv/--json: every Field, as shown in the table.
+func exportText(_ rows: [Device], json: Bool) -> String {
+    if json {
+        let objs = rows.map { d in Dictionary(uniqueKeysWithValues: Field.allCases.map { ($0.rawValue, d.text($0)) }) }
+        let data = try? JSONSerialization.data(withJSONObject: objs, options: [.prettyPrinted, .sortedKeys])
+        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+    }
+    func q(_ s: String) -> String { s.unicodeScalars.contains { ",\"\n\r".unicodeScalars.contains($0) } ? "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : s }
+    return ([Field.allCases.map(\.title)] + rows.map { d in Field.allCases.map { d.text($0) } }).map { $0.map(q).joined(separator: ",") }.joined(separator: "\n") + "\n"
+}
