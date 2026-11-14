@@ -74,12 +74,20 @@ check(localIPs().contains("127.0.0.1"), "loopback is listed")
 // addresses and ranges
 check(ipv4("10.0.0.1") == 0x0a000001 && ipv4(0x0a000001) == "10.0.0.1" && ipv4("10.0.0") == nil, "ipv4 round trip")
 check((try? parseNet("192.168.1.77/24"))?.description == "192.168.1.0/24", "range rounds down to its network")
-check((try? parseNet("10.0.0.0/20")) != nil, "a /20 is the biggest allowed")
+check((try? parseNet("10.0.0.0/16")) != nil, "a /16 is the biggest allowed")
 let lan = Net(ipv4("10.0.0.0")!, 24)
 check((try? customRange(lan, "10.0.0.5", "10.0.0.9"))?.hosts.count == 5, "From/To narrows the scan")
 check((try? customRange(lan, "", ""))?.description == "10.0.0.0/24", "blank From/To keeps the whole subnet")
 check((try? customRange(lan, "10.0.1.5", ""))  == nil && (try? customRange(lan, "10.0.0.9", "10.0.0.5")) == nil, "rejects out-of-subnet and reversed ranges")
-for bad in ["10.0.0.0/19", "8.8.8.0/24", "nonsense", "10.0.0.0/33", "10.0.0.0/8"] { check((try? parseNet(bad)) == nil, "rejects range \(bad)") }
+for bad in ["10.0.0.0/15", "8.8.8.0/24", "nonsense", "10.0.0.0/33", "10.0.0.0/8"] { check((try? parseNet(bad)) == nil, "rejects range \(bad)") }
+// IP lists
+check((try? parseNets("192.168.1.10, 192.168.2.0/24"))?.map(\.description) == ["192.168.1.10/32", "192.168.2.0/24"], "list of an IP and a CIDR")
+check((try? parseNets("10.0.0.0/16, 192.168.0.0/16")) == nil, "list over the total host cap is rejected")
+for bad in ["", "192.168.1.1,", ",10.0.0.1", "10.0.0.1, 8.8.8.8", "10.0.0.1, 8.8.8.0/24", "10.0.0.1 10.0.0.2", "10.0.0.1, nonsense"] { check((try? parseNets(bad)) == nil, "rejects list \"\(bad)\"") }
+// custom ports
+check((try? parsePorts("22, 80,443,8000-8003,80")) == [22, 80, 443, 8000, 8001, 8002, 8003], "ports and ranges, sorted and de-duplicated")
+check((try? parsePorts("1-65535"))?.count == 65535 && (try? parsePorts("65535")) == [65535], "port limits")
+for bad in ["", "0", "65536", "99999", "100000", "-5", "80-", "5-1", "1-2-3", "http", "+80", "80,,81", "22,", "80 81", "0x50", "٨٠"] { check((try? parsePorts(bad)) == nil, "rejects ports \"\(bad)\"") }
 check(Net(ipv4("10.0.0.0")!, 30).hosts == [0x0a000001, 0x0a000002], "hosts leave out network and broadcast")
 
 // port scanner, localhost only: finds what's listening and nothing else
@@ -110,7 +118,7 @@ var passes = [[Found("10.0.0.1", A, true)],
 let stop = Stop()
 var log = [ScanEvent]()
 let net = Net(ipv4("10.0.0.0")!, 24)
-try events(net, .off, live: true, stop: stop, pause: 0, find: { _ in passes.removeFirst() },
+try events([net], .off, live: true, stop: stop, pause: 0, find: { _ in passes.removeFirst() },
            lookup: { found, _, _, emit in for f in found { emit(basic(f)) } },
            emit: { log.append($0); if log.count == 10 { stop.set() } })
 func tag(_ e: ScanEvent) -> String {
@@ -127,7 +135,7 @@ check(log.map(tag) == ["seen 1 10.0.0.1=true", "row 10.0.0.1", "update 10.0.0.1"
 if case .row(let d) = log[8] { check(d.mac == C, "a reassigned IP counts as new") }
 // a plain scan is one pass and stops
 var plain = [ScanEvent]()
-try events(net, find: { _ in [Found("10.0.0.1", A, true)] }, lookup: { f, _, _, emit in for x in f { emit(basic(x)) } }, emit: { plain.append($0) })
+try events([net], find: { _ in [Found("10.0.0.1", A, true)] }, lookup: { f, _, _, emit in for x in f { emit(basic(x)) } }, emit: { plain.append($0) })
 check(plain.count == 3, "plain scan is one pass")
 
 // notifications: who joined and who left between two passes, and whether we had seen them before

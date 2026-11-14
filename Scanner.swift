@@ -94,13 +94,15 @@ func localNet() throws -> Net {
 }
 
 // The network to scan: the interface and optional From/To range picked in Settings, else this Mac's own subnet.
-func chosenNet() throws -> Net {
+func chosenNets() throws -> [Net] {
     let d = UserDefaults.standard
+    let typed = (d.string(forKey: "scanTargets") ?? "").trimmingCharacters(in: .whitespaces)
+    if !typed.isEmpty { return try parseNets(typed) }  // a typed list replaces the interface and From/To
     var net = try localNet()
     let name = d.string(forKey: "scanInterface") ?? ""
     if let i = interfaces().first(where: { $0.name == name }) { net = Net(i.ip, i.mask.nonzeroBitCount) }  // a vanished interface falls back to automatic
     let r = savedRange(net, in: d.string(forKey: "scanRanges") ?? "")  // None for a network never customised: scan all of it
-    return try checkedNet(try customRange(net, r?.from ?? "", r?.to ?? ""))
+    return [try checkedNet(try customRange(net, r?.from ?? "", r?.to ?? ""))]
 }
 
 // every interface, so scanning a second attached network still finds this Mac
@@ -233,11 +235,12 @@ func ndpTable() -> [String: V6] {
 }
 
 // Every device on net.
-func discover(_ net: Net) throws -> [Found] {
-    let up = try sweep(net)
+func discover(_ nets: [Net]) throws -> [Found] {
+    var up = Set<String>()
+    for net in nets { up.formUnion(try sweep(net)) }
     let arp = arpTable(), ndp = ndpTable()
     // firewalled hosts ignore ping but still ARP
-    let cached = arp.filter { ipv4($0.key).map(net.contains) == true && $0.value != "ff:ff:ff:ff:ff:ff" }.keys
+    let cached = arp.filter { k, v in ipv4(k).map { ip in nets.contains { $0.contains(ip) } } == true && v != "ff:ff:ff:ff:ff:ff" }.keys
     return up.union(cached).sorted { (ipv4($0) ?? 0) < (ipv4($1) ?? 0) }.map {
         Found($0, arp[$0] ?? "?", up.contains($0), arp[$0].flatMap { ndp[$0] } ?? V6())
     }
@@ -486,8 +489,17 @@ func identify(_ ip: String, _ ports: [Int]) -> String {  // HTTP "Server" header
     return ""
 }
 
+// The "customPorts" setting (the CLI sets it for its own run only, in the argument domain).
+func portsToScan(_ mode: Mode) throws -> [Int] {
+    switch mode {
+    case .all: return Array(1...65535)
+    case .custom: return try parsePorts(UserDefaults.standard.string(forKey: "customPorts") ?? "")
+    default: return Array(PORTS.keys)
+    }
+}
+
 func portInfo(_ ip: String, _ mode: Mode, _ stop: Stop? = nil) throws -> (ports: [Port], identification: String) {
-    let found = try openPorts(ip, mode == .all ? Array(1...65535) : Array(PORTS.keys), stop)
+    let found = try openPorts(ip, try portsToScan(mode), stop)
     return (found.map { Port(port: $0, name: service($0)) }, identify(ip, found))
 }
 
@@ -546,13 +558,13 @@ func details(_ found: [Found], _ mode: Mode, _ stop: Stop, _ emit: @escaping (De
 let LIVE_PAUSE = 5.0  // seconds between live passes; each pass pings the whole range
 
 // The scan as messages for the UI. Live repeats until stopped, looking up only new devices.
-func events(_ net: Net, _ mode: Mode = .off, live: Bool = false, stop: Stop = Stop(), pause: Double = LIVE_PAUSE,
-            find: (Net) throws -> [Found] = discover,
+func events(_ nets: [Net], _ mode: Mode = .off, live: Bool = false, stop: Stop = Stop(), pause: Double = LIVE_PAUSE,
+            find: ([Net]) throws -> [Found] = discover,
             lookup: ([Found], Mode, Stop, @escaping (Device) -> Void) throws -> Void = details,
             emit: @escaping (ScanEvent) -> Void) throws {
     var known = Set<String>()
     while !stop.isSet {
-        let found = try find(net)
+        let found = try find(nets)
         let new = found.filter { !known.contains($0.ip + $0.mac) }  // (ip, mac): a reassigned IP counts as new
         known = Set(found.map { $0.ip + $0.mac })
         emit(.seen(total: new.count, seen: Dictionary(found.map { ($0.ip, $0.ping) }, uniquingKeysWith: { a, _ in a })))
@@ -567,15 +579,21 @@ func events(_ net: Net, _ mode: Mode = .off, live: Bool = false, stop: Stop = St
     }
 }
 
-// Usage: OtterScan --cli [CIDR] [--ports | --all-ports]   (default: your subnet)
+// Usage: OtterScan --cli [RANGES] [--ports | --ports=22,80,8000-8100 | --all-ports]   (default: your subnet)
+// RANGES is a comma-separated list of IPs and CIDRs, e.g. "192.168.1.10,192.168.2.0/24".
 func runCLI(_ args: [String]) throws {
     prepareProcess()
     let plain = args.filter { !$0.hasPrefix("--") }
-    let net = try plain.first.map(parseNet) ?? localNet()
-    print("Scanning \(net) ...")
-    let mode: Mode = args.contains("--all-ports") ? .all : args.contains("--ports") ? .common : .off
+    let nets = try plain.first.map(parseNets) ?? [localNet()]
+    print("Scanning \(nets.map(\.description).joined(separator: ", ")) ...")
+    var mode: Mode = args.contains("--all-ports") ? .all : args.contains("--ports") ? .common : .off
+    if let list = args.first(where: { $0.hasPrefix("--ports=") }).map({ String($0.dropFirst(8)) }) {
+        _ = try parsePorts(list)  // fail before scanning
+        UserDefaults.standard.setVolatileDomain(["customPorts": list], forName: UserDefaults.argumentDomain)
+        mode = .custom
+    }
     var rows = [Device]()
-    try details(try discover(net), mode, Stop()) { rows.append($0) }
+    try details(try discover(nets), mode, Stop()) { rows.append($0) }
     func cell(_ s: String, _ w: Int) -> String { s.count >= w ? s : s + String(repeating: " ", count: w - s.count) }
     for d in rows.sorted(by: { (ipv4($0.ip) ?? 0) < (ipv4($1.ip) ?? 0) }) {
         print(cell(d.ip, 16) + cell(d.mac, 19) + cell(d.hostname, 42) + cell(d.vendor, 30) + d.text(.ports))

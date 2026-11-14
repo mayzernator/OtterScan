@@ -201,9 +201,10 @@ final class ScanModel: ObservableObject {
         Thread.detachNewThread { [weak self] in
             var end = "Scan complete"
             do {
-                let net = try chosenNet()
-                DispatchQueue.main.async { if self?.session == id { self?.range = "Scan of \(net)" } }
-                try events(net, mode, live: live, stop: stop, pause: pause) { e in
+                let nets = try chosenNets()
+                let label = nets.count == 1 ? nets[0].description : "\(nets.count) ranges"
+                DispatchQueue.main.async { if self?.session == id { self?.range = "Scan of \(label)" } }
+                try events(nets, mode, live: live, stop: stop, pause: pause) { e in
                     DispatchQueue.main.async { self?.handle(e, mode, live, id) }
                 }
             } catch {
