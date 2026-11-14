@@ -1,4 +1,4 @@
-// OtterScan: finds devices on your local network. `OtterScan --cli [CIDR] [--ports] [--csv|--json]` prints a table (or CSV/JSON) instead of opening the window.
+// OtterScan: finds devices on your local network. `OtterScan --cli [RANGES] [--ports[=LIST]] [--csv|--json]` prints a table (or CSV/JSON) instead of opening the window.
 import SwiftUI
 import UserNotifications
 

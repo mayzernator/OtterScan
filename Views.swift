@@ -296,6 +296,8 @@ func applyStayOnTop() {
 struct GeneralPrefs: View {
     @AppStorage("defaultLive") var live = false
     @AppStorage("defaultMode") var mode = "common"
+    @AppStorage("customPorts") var customPorts = ""  // read when the next scan starts
+    var portsProblem: String? { do { _ = try parsePorts(customPorts); return nil } catch { return error.localizedDescription } }
     @AppStorage("livePause") var pause = 5.0
     @AppStorage("autoDetails") var autoDetails = true
     @AppStorage("liveAtLaunch") var liveAtLaunch = true
@@ -331,9 +333,13 @@ struct GeneralPrefs: View {
                 }
             }
             Section("Device Table") {
-                Picker(selection: $mode) { Text("Off").tag("off"); Text("Common").tag("common"); Text("All (slow)").tag("all") } label: {
+                Picker(selection: $mode) { Text("Off").tag("off"); Text("Common").tag("common"); Text("Custom").tag("custom"); Text("All (slow)").tag("all") } label: {
                     Text("Port check")
                     Text("Which ports to check on each device. Changing it rescans.")
+                }
+                if mode == "custom" {
+                    TextField("Custom ports", text: $customPorts, prompt: Text("22,80,443,8000-8100"))
+                    if let e = portsProblem { Text(e).foregroundStyle(.red).font(.caption) }
                 }
                 Toggle(isOn: $autoDetails) {
                     Text("Open details on select")
@@ -404,6 +410,11 @@ struct NotificationPrefs: View {
 
 struct ScanPrefs: View {
     @AppStorage("scanInterface") var name = ""
+    @AppStorage("scanTargets") var targets = ""  // typed IPs/CIDRs; overrides the interface and range below
+    var targetsProblem: String? {
+        if targets.trimmingCharacters(in: .whitespaces).isEmpty { return nil }
+        do { _ = try parseNets(targets); return nil } catch { return error.localizedDescription }
+    }
     @AppStorage("scanRanges") var rangesRaw = ""  // From/To per network, see savedRange
     @AppStorage("savedRanges") var savedRaw = ""  // "from - to" entries, one per line (no @State: swiftc here has no macro plugin)
     var savedAll: [String] { savedRaw.split(separator: "\n").map(String.init) }
@@ -454,6 +465,11 @@ struct ScanPrefs: View {
                     LabeledContent("IP / Mask", value: "\(ipv4(i.ip)) / \(ipv4(i.mask))")
                     LabeledContent("Range", value: n.description)
                 }
+            }
+            Section("Scan Targets") {
+                TextField("IPs / CIDRs", text: $targets, prompt: Text("192.168.1.10, 192.168.2.0/24"))
+                Text(targetsProblem ?? "Optional. When filled in, only these private addresses are scanned instead of the network below.")
+                    .foregroundStyle(targetsProblem == nil ? Color.secondary : Color.red).font(.caption)
             }
             Section("Scan Range") {
                 HStack {

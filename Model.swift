@@ -47,9 +47,9 @@ final class Stop {
 }
 
 enum Mode: String, CaseIterable, Identifiable {
-    case off, common, all
+    case off, common, custom, all
     var id: String { rawValue }
-    var workers: Int { self == .off ? 64 : self == .common ? 32 : 8 }
+    var workers: Int { self == .off ? 64 : self == .common ? 32 : self == .custom ? 16 : 8 }
 }
 
 // Raw values match the keys in settings.json, so saved column choices carry over from the Python version.
@@ -328,6 +328,33 @@ func parseNet(_ s: String) throws -> Net {
     return try checkedNet(Net(ip, prefix))
 }
 
+// Comma-separated IPs and CIDRs ("192.168.1.10, 192.168.2.0/24"). Each must pass checkedNet; together at most MAX_HOSTS addresses.
+let MAX_HOSTS = 65536
+func parseNets(_ s: String) throws -> [Net] {
+    let items = s.split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+    guard !items.contains("") else { throw ScanError("empty entry in the list of addresses") }
+    let nets = try items.map(parseNet)
+    guard nets.reduce(0, { $0 + $1.size }) <= MAX_HOSTS else { throw ScanError("too many addresses (max \(MAX_HOSTS) in total)") }
+    return nets
+}
+
+// "22,80,443,8000-8100" -> sorted, de-duplicated ports in 1...65535.
+func parsePorts(_ s: String) throws -> [Int] {
+    var out = Set<Int>()
+    for item in s.split(separator: ",", omittingEmptySubsequences: false).map({ $0.trimmingCharacters(in: .whitespaces) }) {
+        let ends = item.split(separator: "-", omittingEmptySubsequences: false).map(String.init)
+        // all digits only: Int() would also take "+80"
+        guard (1...2).contains(ends.count), ends.allSatisfy({ !$0.isEmpty && $0.count <= 5 && $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) }) else {
+            throw ScanError("not a valid port or range: \"\(item)\"")
+        }
+        let n = ends.map { Int($0)! }
+        guard n.allSatisfy({ (1...65535).contains($0) }) else { throw ScanError("ports must be between 1 and 65535: \"\(item)\"") }
+        guard n[0] <= n.last! else { throw ScanError("range runs backwards: \"\(item)\"") }
+        out.formUnion(n[0]...n.last!)
+    }
+    return out.sorted()
+}
+
 // Blank From/To mean the first/last host of net; anything else narrows the scan inside it.
 func customRange(_ net: Net, _ from: String, _ to: String) throws -> Net {
     let from = from.trimmingCharacters(in: .whitespaces), to = to.trimmingCharacters(in: .whitespaces)
@@ -354,7 +381,7 @@ func settingRange(_ net: Net, _ from: String, _ to: String, in raw: String) -> S
 
 func checkedNet(_ net: Net) throws -> Net {
     guard isPrivate(net.base), isPrivate(net.last) else { throw ScanError("OtterScan only scans private IPv4 ranges") }
-    guard net.size <= 4096 else { throw ScanError("range too big (max /20)") }
+    guard net.size <= 65536 else { throw ScanError("range too big (max /16)") }
     return net
 }
 
