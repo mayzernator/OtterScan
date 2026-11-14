@@ -26,5 +26,5 @@ Needs only the Xcode Command Line Tools (`xcode-select --install`).
 The blueprint background is drawn by `make_dmg_bg.swift`.
 
 ## Coming soon...
-- Auto updates
-- iPhone app (testFlight)
+- Release across all major platforms (incl. mobile)
+- ~~Auto updates~~
