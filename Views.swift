@@ -690,7 +690,8 @@ struct ContentView: View {
     func table(_ rows: [Device]) -> some View {
         Table(of: Device.self, selection: $m.selection, sortOrder: $m.sortOrder, columnCustomization: m.columnsBinding) {
             TableColumnForEach(Field.allCases) { f in
-                TableColumn(f.title, sortUsing: FieldOrder(f)) { d in cell(d, f) }
+                // min ≈ the "MAC" header plus padding and sort arrow; a column dragged to ~0 width crashed AppKit (2026-11-14). SwiftUI keeps this, unlike NSTableColumn.minWidth.
+                TableColumn(f.title, sortUsing: FieldOrder(f)) { d in cell(d, f) }.width(min: 60)
                     .customizationID(f.rawValue)
                     .defaultVisibility(startHidden.contains(f) ? .hidden : .automatic)
             }
