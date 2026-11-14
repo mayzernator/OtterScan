@@ -18,7 +18,7 @@ func checkForUpdates(automatic: Bool = false) {
         if ProcessInfo.processInfo.environment["FAKE_AUTO"] != nil {  // press Download by itself: tests no click is needed after it
             RunLoop.main.add(Timer(timeInterval: 2, repeats: false) { _ in NSApp.stopModal(withCode: .alertFirstButtonReturn) }, forMode: .common)
         }
-        return showUpdateResult(.success(Release(version: "99.0", page: URL(string: RELEASES_PAGE)!, dmg: URL(string: dmg)!, notes: "Fixes **OtterScan** quitting on big networks. Nothing else changed.")), automatic: automatic)
+        return showUpdateResult(.success(Release(version: "99.0", page: URL(string: RELEASES_PAGE)!, dmg: URL(string: dmg)!, notes: "## Fixed\n- **No more quitting on big networks.** Nothing else changed.\n\n**Full Changelog**: \(RELEASES_PAGE)")), automatic: automatic)
     }
     #endif
     guard !checking, let url = URL(string: RELEASES_API) else { return }
@@ -48,9 +48,7 @@ private func showUpdateResult(_ result: Result<Release, Error>, automatic: Bool)
         if automatic && d.bool(forKey: "autoInstall"), let dmg = r.dmg { return install(dmg, version: r.version) }
         return promptForUpdate(r, current: current)
     case _ where automatic: return
-    case .success:
-        alert.messageText = "You're up to date"
-        alert.informativeText = "OtterScan \(current) is the latest version."
+    case .success(let r): return promptForUpdate(r, current: current, upToDate: true)
     case .failure(let e):
         alert.messageText = "Couldn't check for updates"
         alert.informativeText = e.localizedDescription
@@ -60,14 +58,17 @@ private func showUpdateResult(_ result: Result<Release, Error>, automatic: Bool)
 }
 
 // A plain grey window laid out like Sparkle's, not an NSAlert: an alert is glass in macOS 26 and stacks its buttons.
-private func promptForUpdate(_ release: Release, current: String) {
+// upToDate: the same window for a manual check that found nothing newer, with that release's notes and only an OK button.
+private func promptForUpdate(_ release: Release, current: String, upToDate: Bool = false) {
     let d = UserDefaults.standard
     let icon = NSImageView(image: NSApp.applicationIconImage)
     icon.widthAnchor.constraint(equalToConstant: 64).isActive = true
     icon.heightAnchor.constraint(equalToConstant: 64).isActive = true
-    let title = NSTextField(labelWithString: "A new version of OtterScan is available!")
+    let title = NSTextField(labelWithString: upToDate ? "You're up to date!" : "A new version of OtterScan is available!")
     title.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
-    let info = NSTextField(wrappingLabelWithString: "OtterScan \(release.version) is now available—you have \(current). Would you like to download it now?")
+    let info = NSTextField(wrappingLabelWithString: upToDate
+        ? "OtterScan \(current) is the latest version. Here's what's new in \(release.version):"
+        : "OtterScan \(release.version) is now available—you have \(current). Would you like to download it now?")
     info.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
     let heading = NSStackView(views: [title, info])
     heading.orientation = .vertical; heading.alignment = .leading; heading.spacing = 6
@@ -78,7 +79,12 @@ private func promptForUpdate(_ release: Release, current: String) {
     let notes = NSTextView()
     notes.isEditable = false
     notes.textContainerInset = NSSize(width: 8, height: 10)
-    let md = release.notes.isEmpty ? "No release notes." : release.notes
+    // Headings and bullets by hand: the inline-only parser keeps line breaks but shows "## " and "- " as typed
+    let md = (release.notes.isEmpty ? "No release notes." : release.notes).split(separator: "\n", omittingEmptySubsequences: false).map { line in
+        if line.hasPrefix("#") { return "**\(line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces))**" }
+        if line.hasPrefix("- ") || line.hasPrefix("* ") { return "•  " + line.dropFirst(2) }
+        return String(line)
+    }.joined(separator: "\n")
     let text = (try? NSMutableAttributedString(markdown: md, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
         ?? NSMutableAttributedString(string: md)
     text.addAttributes([.font: NSFont.systemFont(ofSize: NSFont.systemFontSize), .foregroundColor: NSColor.labelColor],
@@ -109,9 +115,10 @@ private func promptForUpdate(_ release: Release, current: String) {
         b.tag = code.rawValue; b.keyEquivalent = key
         return b
     }
-    let buttons = NSStackView(views: [button("Skip This Version", .alertThirdButtonReturn), NSView(),
-                                      button("Remind Me Later", .alertSecondButtonReturn, "\u{1b}"),
-                                      button("Install Update", .alertFirstButtonReturn, "\r")])
+    let buttons = NSStackView(views: upToDate ? [NSView(), button("OK", .alertSecondButtonReturn, "\r")]
+                                              : [button("Skip This Version", .alertThirdButtonReturn), NSView(),
+                                                 button("Remind Me Later", .alertSecondButtonReturn, "\u{1b}"),
+                                                 button("Install Update", .alertFirstButtonReturn, "\r")])
 
     let stack = NSStackView(views: [top, scroll, options, buttons])
     stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 14
