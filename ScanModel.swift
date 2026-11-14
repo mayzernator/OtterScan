@@ -202,6 +202,7 @@ final class ScanModel: ObservableObject {
             var end = "Scan complete"
             do {
                 let nets = try chosenNets()
+                _ = try portsToScan(mode)  // a bad custom port list fails now, not after the sweep
                 let label = nets.count == 1 ? nets[0].description : "\(nets.count) ranges"
                 DispatchQueue.main.async { if self?.session == id { self?.range = "Scan of \(label)" } }
                 try events(nets, mode, live: live, stop: stop, pause: pause) { e in
