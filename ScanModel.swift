@@ -355,6 +355,22 @@ final class ScanModel: ObservableObject {
         }
     }
 
+    func openSSH(_ ip: String) {
+        do { NSWorkspace.shared.open(try sshURL(ip)) } catch { message = "Could not open SSH: \(error.localizedDescription)" }
+    }
+
+    // Runs in Terminal via a temp .command file: no AppleScript permission prompt, and the IP is validated first.
+    func runInTerminal(_ tool: String, _ ip: String) {
+        do {
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("otterscan-\(tool)-\(UUID().uuidString).command")
+            try Data(try terminalScript(tool, ip).utf8).write(to: file)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
+            NSWorkspace.shared.open([file], withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: NSWorkspace.OpenConfiguration())
+        } catch {
+            message = "Could not open Terminal: \(error.localizedDescription)"
+        }
+    }
+
     func addURL(_ s: String, for ip: String) {
         let u = s.trimmingCharacters(in: .whitespacesAndNewlines)
         guard openInSafari(u), !(urls[ip] ?? []).contains(u) else { return }  // saved only once it's accepted

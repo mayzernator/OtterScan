@@ -201,6 +201,14 @@ check(bugBody.contains("- OtterScan: 2.1+beta (42)\n- macOS: Version 15.1 (Build
 check(!bug.absoluteString.contains("+") && bug.absoluteString.components(separatedBy: "&").count == 2, "bug report body is fully encoded")
 check(["## What happened", "## What you expected", "## Steps to reproduce", "## Environment"].allSatisfy(bugBody.contains), "bug report headings")
 
+// per-device actions: only IP literals reach a shell script or ssh:// URL
+check(ipLiteral("192.168.1.5") != nil && ipLiteral("fe80::1") != nil && ipLiteral("::1") != nil, "IP literals accepted")
+check(["", "host.local", "1.2.3.4; rm -rf ~", "1.2.3.4\n", "$(id)", "1.2.3", "999.1.1.1", "fe80::1%en0"].allSatisfy { ipLiteral($0) == nil }, "non-literals rejected")
+check((try? terminalScript("ping", "10.0.0.5")) == "#!/bin/sh\nrm -f \"$0\"\nping 10.0.0.5\n", "ping script")
+check((try? terminalScript("traceroute", "fe80::1")) == "#!/bin/sh\nrm -f \"$0\"\ntraceroute fe80::1\n", "traceroute script")
+check((try? terminalScript("ping", "1.2.3.4; id")) == nil && (try? terminalScript("rm", "1.2.3.4")) == nil, "script refuses bad ip or tool")
+check((try? sshURL("10.0.0.5"))?.absoluteString == "ssh://10.0.0.5" && (try? sshURL("fe80::1"))?.absoluteString == "ssh://[fe80::1]" && (try? sshURL("a b")) == nil, "ssh url")
+
 // reading the kernel's neighbor tables must not crash, whatever they hold
 _ = arpTable(); _ = ndpTable()
 

@@ -840,6 +840,10 @@ struct ContentView: View {
                 }
             }
             Divider()
+            if !d.portsChecked || d.ports.contains(where: { $0.port == 22 }) { Button("Connect via SSH") { m.openSSH(d.ip) } }
+            Button("Ping") { m.runInTerminal("ping", d.ip) }
+            Button("Traceroute") { m.runInTerminal("traceroute", d.ip) }
+            Divider()
             Button("Copy") { m.copy(Field.allCases.map { d.text($0) }.joined(separator: "\t")) }
             ForEach([("Copy IP Address", d.ip), ("Copy MAC Address", d.mac), ("Copy Hostname", d.hostname), ("Copy Vendor", d.vendor)]
                 .filter { !$0.1.isEmpty && $0.1 != "?" }, id: \.0) { item in

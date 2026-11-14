@@ -303,6 +303,23 @@ func webURL(_ s: String) throws -> URL {
     return url
 }
 
+// An IPv4/IPv6 literal, or nil. The only thing allowed into a shell command or ssh:// URL.
+func ipLiteral(_ s: String) -> String? {
+    var a4 = in_addr(), a6 = in6_addr()
+    guard !s.contains("%") else { return nil }  // macOS inet_pton accepts a zone suffix and may not check what follows
+    return inet_pton(AF_INET, s, &a4) == 1 || inet_pton(AF_INET6, s, &a6) == 1 ? s : nil
+}
+
+func terminalScript(_ tool: String, _ ip: String) throws -> String {
+    guard ["ping", "traceroute"].contains(tool), let ip = ipLiteral(ip) else { throw ScanError("not a valid IP address: \(ip)") }
+    return "#!/bin/sh\nrm -f \"$0\"\n\(tool == "ping" ? "ping" : "traceroute") \(ip)\n"
+}
+
+func sshURL(_ ip: String) throws -> URL {
+    guard let ip = ipLiteral(ip), let url = URL(string: "ssh://" + (ip.contains(":") ? "[\(ip)]" : ip)) else { throw ScanError("not a valid IP address: \(ip)") }
+    return url
+}
+
 func parseNet(_ s: String) throws -> Net {
     let parts = s.split(separator: "/", omittingEmptySubsequences: false)
     guard parts.count <= 2, let ip = ipv4(String(parts[0])), let prefix = parts.count == 2 ? Int(parts[1]) : 32, (0...32).contains(prefix) else {
