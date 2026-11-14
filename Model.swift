@@ -440,3 +440,17 @@ func basic(_ f: Found) -> Device {  // what we know instantly; names can take 30
     let v = vendor(f.mac)
     return Device(ip: f.ip, mac: f.mac, ping: f.ping, ipv6Local: f.v6.local, ipv6Global: f.v6.global, vendor: v, kind: deviceKind(v))
 }
+
+// One shared export for the app's Export… and the CLI's --csv/--json: every Field, as shown in the table.
+func exportText(_ rows: [Device], json: Bool) -> String {
+    if json {
+        let objs = rows.map { d in Dictionary(uniqueKeysWithValues: Field.allCases.map { ($0.rawValue, d.text($0)) }) }
+        let data = try? JSONSerialization.data(withJSONObject: objs, options: [.prettyPrinted, .sortedKeys])
+        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+    }
+    // A cell starting with = + - @ tab or CR is a formula to Excel/Numbers, and names come from the LAN, so defuse it with a leading '.
+    func q(_ s0: String) -> String {
+        let s = s0.unicodeScalars.first.map { "=+-@\t\r".unicodeScalars.contains($0) } == true ? "'" + s0 : s0
+        return s.unicodeScalars.contains { ",\"\n\r".unicodeScalars.contains($0) } ? "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : s }
+    return ([Field.allCases.map(\.title)] + rows.map { d in Field.allCases.map { d.text($0) } }).map { $0.map(q).joined(separator: ",") }.joined(separator: "\n") + "\n"
+}

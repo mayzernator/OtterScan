@@ -209,6 +209,23 @@ check((try? terminalScript("traceroute", "fe80::1")) == "#!/bin/sh\nrm -f \"$0\"
 check((try? terminalScript("ping", "1.2.3.4; id")) == nil && (try? terminalScript("rm", "1.2.3.4")) == nil, "script refuses bad ip or tool")
 check((try? sshURL("10.0.0.5"))?.absoluteString == "ssh://10.0.0.5" && (try? sshURL("fe80::1"))?.absoluteString == "ssh://[fe80::1]" && (try? sshURL("a b")) == nil, "ssh url")
 
+// export: CSV quotes commas, quotes and newlines; JSON carries every field
+do {
+    var d = Device(ip: "10.0.0.5", mac: "aa:bb", ping: true, ipv6Local: "", ipv6Global: "", vendor: "Acme, Inc")
+    d.hostname = "say \"hi\"\nthere"
+    let csv = exportText([d], json: false)
+    check(csv.hasPrefix("Device,IPv4 Address,"), "csv header")
+    check(csv.contains("\"say \"\"hi\"\"\nthere\",10.0.0.5,"), "csv quotes quotes and newlines")
+    check(csv.contains("\"Acme, Inc\""), "csv quotes commas")
+    d.note = "=HYPERLINK(\"http://x\")"
+    check(exportText([d], json: false).contains("\"'=HYPERLINK(\"\"http://x\"\")\""), "csv defuses formulas")
+    check(exportText([d], json: true).contains("\"=HYPERLINK("), "json leaves formulas alone")
+    d.note = "a\r\nb"
+    check(exportText([d], json: false).contains("\"a\r\nb\""), "csv quotes CRLF")
+    let obj = (try? JSONSerialization.jsonObject(with: Data(exportText([d], json: true).utf8))) as? [[String: String]]
+    check(obj?.first?["ip"] == "10.0.0.5" && obj?.first?["hostname"] == "say \"hi\"\nthere" && obj?.first?["ping"] == "Online", "json output")
+}
+
 // reading the kernel's neighbor tables must not crash, whatever they hold
 _ = arpTable(); _ = ndpTable()
 
