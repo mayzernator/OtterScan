@@ -57,9 +57,8 @@ struct OtterScanApp: App {
             CommandGroup(before: .toolbar) {
                 Button("Devices") { model.view = .devices }.keyboardShortcut("1")
                 Button("Ports") { model.view = .ports }.keyboardShortcut("2")
-                Button("Public Ports") { model.view = .exposed }.keyboardShortcut("3")
                 Button("Next View") {
-                    let all = ViewKind.allCases
+                    let all = ViewKind.allCases.filter { $0 != .exposed }  // Public tab is hidden for now
                     model.view = all[(all.firstIndex(of: model.view)! + 1) % all.count]
                 }.keyboardShortcut("`")
                 Button(model.showDetails ? "Hide Details" : "Show Details") { model.showDetails.toggle() }.keyboardShortcut("b")
