@@ -259,14 +259,28 @@ struct PreferencesView: View {
     @AppStorage("settingsTab") var tab = "general"
     var body: some View {
         TabView(selection: $tab) {
-            GeneralPrefs().tabItem { Label("General", systemImage: "gearshape") }.tag("general")
-            ScanPrefs().tabItem { Label("Scan", systemImage: "network") }.tag("scan")
-            NotificationPrefs().tabItem { Label("Notifications", systemImage: "bell") }.tag("notifications")
+            FitScroll("GeneralPrefs") { GeneralPrefs() }.tabItem { Label("General", systemImage: "gearshape") }.tag("general")
+            FitScroll("ScanPrefs") { ScanPrefs() }.tabItem { Label("Scan", systemImage: "network") }.tag("scan")
+            FitScroll("NotificationPrefs") { NotificationPrefs() }.tabItem { Label("Notifications", systemImage: "bell") }.tag("notifications")
         }
         .toggleStyle(.switch)
         .navigationTitle("OtterScan")
         .frame(width: 480)
         .onAppear { applyStayOnTop() }  // Settings floats too, or the main window would cover it
+    }
+}
+
+// Tab content at its full height, but never taller than the screen allows: past that it scrolls (title bar + tab bar take ~160pt).
+struct FitScroll<C: View>: View {
+    @ViewBuilder var content: C
+    @AppStorage private var h: Double  // @AppStorage as state: swiftc here has no macro plugin; a remembered height also avoids a first-frame jump
+    init(_ name: String, @ViewBuilder content: () -> C) {
+        self.content = content()
+        _h = AppStorage(wrappedValue: 0, "fitHeight-\(name)")
+    }
+    var body: some View {
+        ScrollView { content.onGeometryChange(for: Double.self) { Double($0.size.height) } action: { h = $0 } }
+            .frame(height: h > 0 ? min(h, (NSScreen.main?.visibleFrame.height ?? 800) - 160) : nil)
     }
 }
 
@@ -357,7 +371,7 @@ struct GeneralPrefs: View {
             }
         }
         .formStyle(.grouped)
-        .scrollDisabled(true)  // fixed-height pane: nothing to scroll
+        .scrollDisabled(true)  // the outer ScrollView scrolls; the form keeps its full height so the window sizes to it
         .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -380,7 +394,7 @@ struct NotificationPrefs: View {
             }
         }
         .formStyle(.grouped)
-        .scrollDisabled(true)
+        .scrollDisabled(true)  // the outer ScrollView scrolls; the form keeps its full height so the window sizes to it
         .fixedSize(horizontal: false, vertical: true)
         .onChange(of: [newJoin, newLeave, knownJoin, knownLeave]) {
             if [newJoin, newLeave, knownJoin, knownLeave].contains(true) { askToNotify() }  // permission is asked for here, not at launch
@@ -463,7 +477,7 @@ struct ScanPrefs: View {
             }
         }
         .formStyle(.grouped)
-        .scrollDisabled(true)
+        .scrollDisabled(true)  // the outer ScrollView scrolls; the form keeps its full height so the window sizes to it
         .fixedSize(horizontal: false, vertical: true)
     }
 }
