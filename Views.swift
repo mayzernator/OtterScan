@@ -1,6 +1,7 @@
 // OtterScan's window: toolbar, device table, port cards, details panel, status bar.
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 let buyMeACoffeeURL: URL? = nil  // set to https://buymeacoffee.com/<handle> once the account exists; nil hides the Settings button
 
@@ -315,6 +316,7 @@ struct GeneralPrefs: View {
     @AppStorage("wrapText") var wrapText = false
     @AppStorage("wrapNotes") var wrapNotes = false
     @AppStorage("friendlyPorts") var friendlyPorts = false
+    @AppStorage("launchAtLogin") var launchAtLogin = false  // only a mirror (as state, no macros here): the real value is SMAppService's, synced on appear
     let info = Bundle.main.infoDictionary ?? [:]
 
     var body: some View {
@@ -373,6 +375,15 @@ struct GeneralPrefs: View {
                     Text("Keep on top")
                     Text("OtterScan stays above other apps' windows.")
                 }.onChange(of: stayOnTop) { applyStayOnTop() }
+                Toggle(isOn: $launchAtLogin) {
+                    Text("Launch at login")
+                    Text("Opens OtterScan when you log in to your Mac.")
+                }.onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
+                .onChange(of: launchAtLogin) {
+                    guard launchAtLogin != (SMAppService.mainApp.status == .enabled) else { return }
+                    do { if launchAtLogin { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
+                    catch { launchAtLogin = SMAppService.mainApp.status == .enabled }  // registration failed: show the real state
+                }
             }
             Section("Updates") {
                 Toggle(isOn: $autoUpdate) {
