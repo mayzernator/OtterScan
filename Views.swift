@@ -396,6 +396,22 @@ struct GeneralPrefs: View {
     }
 }
 
+final class Flag: ObservableObject { @Published var shown = false }
+
+struct InfoHeader: View {
+    let title: String, text: String
+    @StateObject private var flag = Flag()  // not @State: no macro plugin here
+    init(_ title: String, _ text: String) { (self.title, self.text) = (title, text) }
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(title)
+            Button(action: { flag.shown = true }) { Image(systemName: "info.circle") }
+                .buttonStyle(.plain)
+                .popover(isPresented: $flag.shown) { Text(text).padding().frame(width: 240) }
+        }
+    }
+}
+
 struct NotificationPrefs: View {
     @AppStorage("notifyNewJoin") var newJoin = false
     @AppStorage("notifyNewLeave") var newLeave = false
@@ -404,13 +420,17 @@ struct NotificationPrefs: View {
 
     var body: some View {
         Form {
-            Section("Known Devices") {
+            Section {
                 Toggle(isOn: $knownJoin) { Text("Joins the network"); Text("A device you've seen before comes back.") }
                 Toggle(isOn: $knownLeave) { Text("Leaves the network"); Text("A device you've seen before stops answering.") }
+            } header: {
+                InfoHeader("Known Devices", "A device OtterScan has seen on a previous scan, including earlier launches. Identified by MAC address, or IP.")
             }
-            Section("New Devices") {
+            Section {
                 Toggle(isOn: $newJoin) { Text("Joins the network"); Text("A device OtterScan has never seen shows up.") }
                 Toggle(isOn: $newLeave) { Text("Leaves the network"); Text("A device that first showed up since OtterScan opened goes away.") }
+            } header: {
+                InfoHeader("New Devices", "A device OtterScan has never seen before. It stays new until you relaunch the app.")
             }
         }
         .formStyle(.grouped)
