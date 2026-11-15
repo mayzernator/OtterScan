@@ -47,6 +47,7 @@ final class EndField: NSTextField {
 struct NoteEditor: NSViewRepresentable {
     @Binding var text: String
     var prompt = ""
+    var wrap = false  // table only: grow to more lines instead of truncating
 
     func makeNSView(context: Context) -> EndField {
         let f = EndField(string: text)
@@ -68,6 +69,14 @@ struct NoteEditor: NSViewRepresentable {
     func updateNSView(_ f: EndField, context: Context) {
         context.coordinator.parent = self
         if f.currentEditor() == nil && f.stringValue != text { f.stringValue = text }
+        f.cell?.wraps = wrap
+        f.cell?.isScrollable = !wrap
+        f.lineBreakMode = wrap ? .byWordWrapping : .byTruncatingTail
+    }
+    // A wrapping field reports its height for the column width so the row grows to fit.
+    func sizeThatFits(_ p: ProposedViewSize, nsView f: EndField, context: Context) -> CGSize? {
+        guard wrap, let w = p.width, w.isFinite, let cell = f.cell else { return nil }
+        return CGSize(width: w, height: cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: w, height: .greatestFiniteMagnitude)).height)
     }
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -304,6 +313,7 @@ struct GeneralPrefs: View {
     @AppStorage("stayOnTop") var stayOnTop = false
     @AppStorage("autoUpdate") var autoUpdate = true
     @AppStorage("wrapText") var wrapText = false
+    @AppStorage("wrapNotes") var wrapNotes = false
     @AppStorage("friendlyPorts") var friendlyPorts = false
     let info = Bundle.main.infoDictionary ?? [:]
 
@@ -333,7 +343,7 @@ struct GeneralPrefs: View {
                 }
             }
             Section("Device Table") {
-                Picker(selection: $mode) { Text("Off").tag("off"); Text("Common").tag("common"); Text("Custom").tag("custom"); Text("All (slow)").tag("all") } label: {
+                Picker(selection: $mode) { Text("Off").tag("off"); Text("Common (default)").tag("common"); Text("Custom").tag("custom"); Text("All (slow)").tag("all") } label: {
                     Text("Port check")
                     Text("Which ports to check on each device. Changing it rescans.")
                 }
@@ -349,6 +359,10 @@ struct GeneralPrefs: View {
                     Text("Wrap text")
                     Text("Long names and port lists use more lines instead of being cut off.")
                 }
+                Toggle(isOn: $wrapNotes) {
+                    Text("Wrap notes column")
+                    Text("Long notes use more lines too.")
+                }.disabled(!wrapText).padding(.leading, 20)
                 Toggle(isOn: $friendlyPorts) {
                     Text("Friendly port names")
                     Text("Shows SSH 22 instead of just 22.")
@@ -546,6 +560,7 @@ struct ContentView: View {
     @EnvironmentObject var m: ScanModel
     @AppStorage("defaultMode") var portCheck = "common"
     @AppStorage("wrapText") var wrapText = false
+    @AppStorage("wrapNotes") var wrapNotes = false
     @AppStorage("friendlyPorts") var friendlyPorts = false
     var shown: [Device] {
         let q = m.search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -719,11 +734,12 @@ struct ContentView: View {
         }
         .contextMenu(forSelectionType: String.self) { ids in menu(ids) }
         .background(TableAccess(m: m))
+        .id("\(wrapText)-\(wrapNotes)")  // rows keep their old heights when wrapping changes, so rebuild the table
     }
 
     // The table's note box is blank; the details panel passes a prompt.
-    func noteField(_ d: Device, prompt: String = "") -> some View {
-        NoteEditor(text: Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) }), prompt: prompt)
+    func noteField(_ d: Device, prompt: String = "", wrap: Bool = false) -> some View {
+        NoteEditor(text: Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) }), prompt: prompt, wrap: wrap)
     }
 
     @ViewBuilder func cell(_ d: Device, _ f: Field) -> some View {
@@ -749,7 +765,7 @@ struct ContentView: View {
             }
             .contentShape(Rectangle()).onTapGesture(count: 2) { m.startRename(d.ip) }
         } else if f == .note {
-            noteField(d)
+            noteField(d, wrap: wrapText && wrapNotes)
         } else if d.wait.contains(f) && d.text(f).isEmpty {
             Spinner()
         } else if f == .ping {
