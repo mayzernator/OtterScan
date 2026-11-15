@@ -927,6 +927,7 @@ struct ContentView: View {
             }
             .formStyle(.grouped)
             .textSelection(.enabled)
+            .id(d.ip)  // fresh fields per device: a reused title/note field that still had focus kept the last device's text
         } else {
             Text("Select a device to see its details.").foregroundStyle(.secondary).padding()
         }
