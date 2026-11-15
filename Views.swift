@@ -957,7 +957,9 @@ extension Notification.Name {
 func exportList(_ m: ScanModel, _ rows: [Device]) {
     let panel = NSSavePanel()
     panel.allowedContentTypes = [.commaSeparatedText, .json]
-    panel.nameFieldStringValue = "OtterScan.csv"
+    let app = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "OtterScan"
+    let net = exportNetworkName()
+    panel.nameFieldStringValue = (net.isEmpty ? app : "\(app)-\(net)") + ".csv"
     guard panel.runModal() == .OK, let url = panel.url else { return }
     do { try exportText(rows, json: url.pathExtension.lowercased() == "json").write(to: url, atomically: true, encoding: .utf8) } catch {
         m.message = "Could not save export: \(error.localizedDescription)"

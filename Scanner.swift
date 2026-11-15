@@ -1,4 +1,5 @@
 import SystemConfiguration
+import CoreWLAN
 // OtterScan's scanner: finds devices on the local network. No UI here; App.swift shows the results.
 import Foundation
 
@@ -103,6 +104,21 @@ func chosenNets() throws -> [Net] {
     if let i = interfaces().first(where: { $0.name == name }) { net = Net(i.ip, i.mask.nonzeroBitCount) }  // a vanished interface falls back to automatic
     let r = savedRange(net, in: d.string(forKey: "scanRanges") ?? "")  // None for a network never customised: scan all of it
     return [try checkedNet(try customRange(net, r?.from ?? "", r?.to ?? ""))]
+}
+
+// "<network name>" plus " <range>" when the scan isn't the whole subnet, for the export's default file name.
+func exportNetworkName() -> String {
+    let all = interfaces()
+    let picked = all.first { $0.name == UserDefaults.standard.string(forKey: "scanInterface") }
+    guard let net = picked.map({ Net($0.ip, $0.mask.nonzeroBitCount) }) ?? (try? localNet()) else { return "" }
+    let iface = picked ?? all.first { Net($0.ip, $0.mask.nonzeroBitCount).base == net.base }
+    // the Wi-Fi name needs Location access; without it macOS returns nil and "Wi-Fi" is used instead
+    var name = CWWiFiClient.shared().interface(withName: iface?.name)?.ssid() ?? iface.flatMap { friendlyInterfaceNames()[$0.name] } ?? ""
+    if let nets = try? chosenNets() {
+        let whole = nets.count == 1 && [(net.base, net.last), (net.hosts.first, net.hosts.last)].contains { $0 == nets[0].base && $1 == nets[0].last }
+        if !whole { name += " " + nets.map { $0.description.replacingOccurrences(of: " – ", with: "-") }.joined(separator: ", ") }
+    }
+    return name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "-")
 }
 
 // every interface, so scanning a second attached network still finds this Mac
