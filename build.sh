@@ -10,7 +10,8 @@ rm -rf OtterScan.app
 mkdir -p OtterScan.app/Contents/MacOS OtterScan.app/Contents/Resources
 swiftc -O -swift-version 5 $SWIFTFLAGS -target $TARGET $SRC ScanModel.swift Views.swift Updates.swift main.swift -o OtterScan.app/Contents/MacOS/OtterScan
 I="$TMPDIR/AppIcon.iconset"; rm -rf "$I"; mkdir "$I"
-cp logo/otter-globe/app-icon.png "$I/icon_512x512@2x.png"
+sips -c 940 940 logo/otter-globe/app-icon.png --out "$I/crop.png" >/dev/null  # trim the template margin so the tile fills the icon slot
+sips -z 1024 1024 "$I/crop.png" --out "$I/icon_512x512@2x.png" >/dev/null; rm "$I/crop.png"
 for s in 16 32 64 128 256 512; do sips -z $s $s "$I/icon_512x512@2x.png" --out "$I/icon_${s}x${s}.png" >/dev/null; done
 for s in 16 32 128 256; do cp "$I/icon_$((s*2))x$((s*2)).png" "$I/icon_${s}x${s}@2x.png"; done
 cp "$I/icon_64x64.png" "$I/icon_32x32@2x.png"; rm "$I/icon_64x64.png"
