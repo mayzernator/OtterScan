@@ -219,6 +219,55 @@ struct FlowLayout: Layout {
     }
 }
 
+// The toolbar's Filters menu: one submenu per filter, with a checkmark on the current choice.
+// Equatable on what it shows, so it is only rebuilt when that changes, not on every scan update.
+struct FilterMenu: View, Equatable {
+    let filters: Filters
+    let vendorChoices: [(String, String?)]
+    let portChoices: [(String, PortFilter)]
+    let canScanPorts: Bool
+    let set: (Filters) -> Void
+    let scanPorts: () -> Void
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.filters == b.filters && a.canScanPorts == b.canScanPorts
+            && a.vendorChoices.map(\.0) == b.vendorChoices.map(\.0) && a.portChoices.map(\.1) == b.portChoices.map(\.1)
+    }
+
+    func binding<T>(_ key: WritableKeyPath<Filters, T>) -> Binding<T> {
+        Binding(get: { filters[keyPath: key] }, set: { var f = filters; f[keyPath: key] = $0; set(f) })
+    }
+
+    func choice<T: Hashable>(_ title: String, _ key: WritableKeyPath<Filters, T>, _ options: [(String, T)]) -> some View {
+        Picker(title, selection: binding(key)) {
+            ForEach(options, id: \.1) { Text($0.0).tag($0.1) }
+        }.pickerStyle(.menu)
+    }
+
+    var body: some View {
+        Menu {
+            choice("Type", \.kind, KINDS_SHOWN)
+            choice("Vendor", \.vendor, vendorChoices)
+            choice("Ping", \.ping, [("All", nil), ("Online", true), ("No Reply", false)])
+            Menu("Ports") {
+                Picker("Ports", selection: binding(\.port)) {
+                    ForEach(portChoices, id: \.1) { Text($0.0).tag($0.1) }
+                }.pickerStyle(.inline).labelsHidden()
+                Divider()
+                Button("Scan Every Port on Selected Device", action: scanPorts).disabled(!canScanPorts)
+            }
+            choice("Show", \.favourites, [("All", false), ("Favourites", true)])
+            Divider()
+            Button("Clear Filters") { set(Filters()) }.disabled(filters == Filters())
+        } label: {
+            // filled when any filter is on, the usual macOS cue that the list is narrowed
+            Label("Filters", systemImage: filters == Filters() ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+        }
+        .menuIndicator(.hidden)  // a plain icon button, no chevron
+        .help("Filter the list")
+    }
+}
+
 // shortcut: SwiftUI's Table has no API for column widths or keyboard focus, so this finds the NSTableView behind it; replace if Table gains one.
 final class TableFinder: NSView {
     var found: ((NSTableView) -> Void)?
@@ -673,36 +722,12 @@ struct ContentView: View {
             + ports.sorted { $0.key < $1.key }.map { ($0.value, .port($0.key)) }
         let vendors = Set(m.rows.map(\.vendor)).union(m.filters.vendor.map { [$0] } ?? []).filter { !$0.isEmpty }.sorted()
         let vendorChoices: [(String, String?)] = [("All", nil)] + vendors.map { ($0, $0) }
-        let pingChoices: [(String, Bool?)] = [("All", nil), ("Online", true), ("No Reply", false)]
 
-        return Menu {
-            choice("Type", $m.filters.kind, KINDS_SHOWN)
-            choice("Vendor", $m.filters.vendor, vendorChoices)
-            choice("Ping", $m.filters.ping, pingChoices)
-            Menu("Ports") {
-                Picker("Ports", selection: $m.filters.port) {
-                    ForEach(portChoices, id: \.1) { Text($0.0).tag($0.1) }
-                }.pickerStyle(.inline).labelsHidden()
-                Divider()
-                Button("Scan Every Port on Selected Device") { if let ip = m.selection { m.scanEveryPort(ip) } }
-                    .disabled(m.selection.map { m.scanningPorts.contains($0) } ?? true)
-            }
-            choice("Show", $m.filters.favourites, [("All", false), ("Favourites", true)])
-            Divider()
-            Button("Clear Filters") { m.filters = Filters() }.disabled(m.filters == Filters())
-        } label: {
-            // filled when any filter is on, the usual macOS cue that the list is narrowed
-            Label("Filters", systemImage: m.filters == Filters() ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-        }
-        .disabled(m.view == .exposed)
-        .help("Filter the list")
-    }
-
-    // A submenu of options with a checkmark on the current one.
-    func choice<T: Hashable>(_ title: String, _ value: Binding<T>, _ options: [(String, T)]) -> some View {
-        Picker(title, selection: value) {
-            ForEach(options, id: \.1) { Text($0.0).tag($0.1) }
-        }.pickerStyle(.menu)
+        return FilterMenu(filters: m.filters, vendorChoices: vendorChoices, portChoices: portChoices,
+                          canScanPorts: m.selection.map { !m.scanningPorts.contains($0) } ?? false,
+                          set: { m.filters = $0 }, scanPorts: { if let ip = m.selection { m.scanEveryPort(ip) } })
+            .equatable()  // live scans republish the model every few seconds; rebuilding the menu then shut open submenus
+            .disabled(m.view == .exposed)
     }
 
     // MARK: public ports
