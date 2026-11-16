@@ -100,7 +100,24 @@ final class ScanModel: ObservableObject {
                 return e
             }
         }
+        // Rows keep the height they were measured at, so a name that wrapped while the columns were still narrow stays tall
+        // after they widen. Re-measure once a resize settles (the debounce also covers a drag, which fires this continuously).
+        if let old = resizeObserver { NotificationCenter.default.removeObserver(old) }  // a rebuilt table is a new NSTableView
+        resizeObserver = NotificationCenter.default.addObserver(forName: NSTableView.columnDidResizeNotification, object: t, queue: .main) { [weak self] _ in
+            self?.remeasureWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.remeasureRows() }
+            self?.remeasureWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        }
         fitColumnsOnce()
+    }
+
+    private var resizeObserver: Any?
+    private var remeasureWork: DispatchWorkItem?
+
+    private func remeasureRows() {
+        guard UserDefaults.standard.bool(forKey: "wrapText"), let t = table, t.numberOfRows > 0 else { return }  // unwrapped rows are one line already
+        t.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<t.numberOfRows))
     }
 
     // Once per launch, after the first pass has filled in the names.
