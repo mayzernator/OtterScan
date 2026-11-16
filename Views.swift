@@ -925,6 +925,8 @@ struct ContentView: View {
     @ViewBuilder func menu(_ ids: Set<String>) -> some View {
         if let ip = ids.first, let d = m.device(ip) {
             Button(m.isFavourite(d) ? "Remove from Favourites" : "Favourite") { m.toggleFavourite(d) }
+            Button("Edit Name") { m.startRename(ip) }
+            if m.hasCustomName(d) { Button("Reset Name") { m.resetName(ip) } }
             Divider()
             Menu("Open in Browser") {
                 Button("Add New URL…") { m.newURL = "http://\(ip):"; m.addURLFor = ip }

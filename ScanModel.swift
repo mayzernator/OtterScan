@@ -255,11 +255,13 @@ final class ScanModel: ObservableObject {
             }
             if kept.count != rows.count || zip(kept, rows).contains(where: { $0.ping != $1.ping }) { rows = kept }
         case .row(var d):
+            d.scannedName = d.hostname
             if let n = names[d.key] { d.hostname = n }
             d.note = notes[d.key] ?? ""
             d.wait = Field.names.union(mode == .off ? [] : [.ports, .identification])
             if let i = index(d.ip) { rows[i] = d } else { rows.append(d) }
         case .update(var d):
+            d.scannedName = d.hostname
             if let n = names[d.key] { d.hostname = n }
             if let i = index(d.ip) {
                 d.ping = rows[i].ping
@@ -335,13 +337,20 @@ final class ScanModel: ObservableObject {
         renaming = ip
     }
 
-    // An empty name clears the custom one; the real hostname comes back on the next scan.
+    // An empty name clears the custom one and puts the scanned name straight back.
     func rename(_ ip: String, to name: String) {
         guard let i = index(ip) else { return }
         let name = name.trimmingCharacters(in: .whitespaces)
         if rows[i].hostname.isEmpty && name == rows[i].ip { return }  // unchanged IP placeholder isn't a name
-        if name.isEmpty { names[rows[i].key] = nil } else { names[rows[i].key] = name; rows[i].hostname = name }
+        if name.isEmpty { names[rows[i].key] = nil; rows[i].hostname = rows[i].scannedName } else { names[rows[i].key] = name; rows[i].hostname = name }
         UserDefaults.standard.set(names, forKey: "names")
+    }
+
+    func hasCustomName(_ d: Device) -> Bool { names[d.key] != nil }
+
+    func resetName(_ ip: String) {
+        if renaming == ip { renaming = nil }
+        rename(ip, to: "")
     }
 
     func setNote(_ d: Device, _ text: String) {

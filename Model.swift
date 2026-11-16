@@ -112,6 +112,7 @@ struct Device: Identifiable {
     var ports = [Port](), identification = "", kind = ""
     var wait = Set<Field>()  // what's still being looked up, so the UI can show a spinner
     var portsChecked = false  // tells "no open ports" apart from "never looked"
+    var scannedName = ""  // the name the scan found, kept under a custom name so a reset can put it back at once
     var id: String { ip }
     var key: String { mac == "?" ? ip : mac }  // favourites follow the MAC, because DHCP can change the IP
 
