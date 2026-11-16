@@ -789,11 +789,12 @@ struct ContentView: View {
                 if d.wait.contains(.hostname) && d.hostname.isEmpty {
                     Spinner()
                 } else {
-                    Text(m.title(d)).lineLimit(wrapText ? nil : 1)
+                    Text(m.title(d)).lineLimit(wrapText ? nil : 1).fixedSize(horizontal: false, vertical: true)  // wrap onto more lines, never squeeze or shift the icon
                     if !d.vendor.isEmpty { Text(d.vendor).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 if m.isFavourite(d) { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Favourite") }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)  // icon stays flush left even when the name wraps
             .contentShape(Rectangle()).onTapGesture(count: 2) { m.startRename(d.ip) }
         } else if f == .note {
             noteField(d, wrap: wrapText && wrapNotes)
