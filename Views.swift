@@ -316,6 +316,7 @@ struct GeneralPrefs: View {
     @AppStorage("wrapText") var wrapText = false
     @AppStorage("wrapNotes") var wrapNotes = false
     @AppStorage("friendlyPorts") var friendlyPorts = false
+    @AppStorage("removeDashes") var removeDashes = true
     @AppStorage("launchAtLogin") var launchAtLogin = false  // only a mirror (as state, no macros here): the real value is SMAppService's, synced on appear
     let info = Bundle.main.infoDictionary ?? [:]
 
@@ -356,6 +357,10 @@ struct GeneralPrefs: View {
                 Toggle(isOn: $autoDetails) {
                     Text("Open details on select")
                     Text("Shows the details panel when you pick a device.")
+                }
+                Toggle(isOn: $removeDashes) {
+                    Text("Remove dashes from device names (on by default)")
+                    Text("Shows Mays MacBook Pro instead of Mays-MacBook-Pro.")
                 }
                 Toggle(isOn: $wrapText) {
                     Text("Wrap text")
@@ -593,6 +598,7 @@ struct ContentView: View {
     @AppStorage("wrapText") var wrapText = false
     @AppStorage("wrapNotes") var wrapNotes = false
     @AppStorage("friendlyPorts") var friendlyPorts = false
+    @AppStorage("removeDashes") var removeDashes = true  // not read here: observing it makes the table redraw when the Settings toggle flips
     var shown: [Device] {
         let q = m.search.trimmingCharacters(in: .whitespaces).lowercased()
         var r = m.rows.filter { d in
