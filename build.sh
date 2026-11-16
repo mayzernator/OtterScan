@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds OtterScan.app next to this script. Needs only the Xcode Command Line Tools.
-set -e
+BBBset -e
 cd "$(dirname "$0")"
 TARGET=arm64-apple-macos14.4
 SRC="Model.swift Scanner.swift"
@@ -26,8 +26,8 @@ cat > OtterScan.app/Contents/Info.plist <<'EOF'
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundleExecutable</key><string>OtterScan</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>2.5.6</string>
-<key>CFBundleVersion</key><string>16</string>
+<key>CFBundleShortVersionString</key><string>2.5.7</string>
+<key>CFBundleVersion</key><string>17</string>
 <key>LSMinimumSystemVersion</key><string>14.4</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSLocalNetworkUsageDescription</key><string>OtterScan looks for devices on your local network.</string>
