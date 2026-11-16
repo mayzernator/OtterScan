@@ -96,5 +96,5 @@ if CommandLine.arguments.dropFirst().first == "--cli" {
     }
     exit(0)
 }
-UserDefaults.standard.register(defaults: ["defaultMode": "common", "livePause": 5.0, "autoDetails": true, "liveAtLaunch": true, "autoUpdate": true])
+UserDefaults.standard.register(defaults: ["defaultMode": "common", "livePause": 5.0, "autoDetails": true, "liveAtLaunch": true, "autoUpdate": true, "removeDashes": true])
 OtterScanApp.main()

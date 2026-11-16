@@ -116,7 +116,7 @@ final class ScanModel: ObservableObject {
 
     // What the Device column shows; a custom name is shown exactly as typed.
     func title(_ d: Device) -> String {
-        d.hostname.isEmpty ? d.ip : displayName(d.hostname)  // custom names too: older renames saved the raw "Name-x.local"
+        d.hostname.isEmpty ? d.ip : displayName(d.hostname, removeDashes: UserDefaults.standard.bool(forKey: "removeDashes"))  // custom names too: older renames saved the raw "Name-x.local"
     }
 
     private func cellWidth(_ d: Device, _ f: Field) -> CGFloat {
