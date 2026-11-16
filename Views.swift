@@ -219,18 +219,53 @@ struct FlowLayout: Layout {
     }
 }
 
-// A menu button as wide as its current value. A Picker is as wide as its longest option, which pushed short values off-centre.
-func dropdown<T: Hashable>(_ title: String, _ value: Binding<T>, _ options: [(String, T)],
-                              action: (title: String, enabled: Bool, run: () -> Void)? = nil) -> some View {
-    Menu {
-        Picker(title, selection: value) {
-            ForEach(options, id: \.1) { Text($0.0).tag($0.1) }
-        }.pickerStyle(.inline).labelsHidden()
-        if let action { Divider(); Button(action.title, action: action.run).disabled(!action.enabled) }
-    } label: {
-        Text("\(title): \(options.first { $0.1 == value.wrappedValue }?.0 ?? "")").padding(.horizontal, 6)
+// The toolbar's Filters menu: one submenu per filter, with a checkmark on the current choice.
+// Equatable on what it shows, so it is only rebuilt when that changes, not on every scan update.
+struct FilterMenu: View, Equatable {
+    let filters: Filters
+    let vendorChoices: [(String, String?)]
+    let portChoices: [(String, PortFilter)]
+    let canScanPorts: Bool
+    let set: (Filters) -> Void
+    let scanPorts: () -> Void
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.filters == b.filters && a.canScanPorts == b.canScanPorts
+            && a.vendorChoices.map(\.0) == b.vendorChoices.map(\.0) && a.portChoices.map(\.1) == b.portChoices.map(\.1)
     }
-    .fixedSize()
+
+    func binding<T>(_ key: WritableKeyPath<Filters, T>) -> Binding<T> {
+        Binding(get: { filters[keyPath: key] }, set: { var f = filters; f[keyPath: key] = $0; set(f) })
+    }
+
+    func choice<T: Hashable>(_ title: String, _ key: WritableKeyPath<Filters, T>, _ options: [(String, T)]) -> some View {
+        Picker(title, selection: binding(key)) {
+            ForEach(options, id: \.1) { Text($0.0).tag($0.1) }
+        }.pickerStyle(.menu)
+    }
+
+    var body: some View {
+        Menu {
+            choice("Type", \.kind, KINDS_SHOWN)
+            choice("Vendor", \.vendor, vendorChoices)
+            choice("Ping", \.ping, [("All", nil), ("Online", true), ("No Reply", false)])
+            Menu("Ports") {
+                Picker("Ports", selection: binding(\.port)) {
+                    ForEach(portChoices, id: \.1) { Text($0.0).tag($0.1) }
+                }.pickerStyle(.inline).labelsHidden()
+                Divider()
+                Button("Scan Every Port on Selected Device", action: scanPorts).disabled(!canScanPorts)
+            }
+            choice("Show", \.favourites, [("All", false), ("Favourites", true)])
+            Divider()
+            Button("Clear Filters") { set(Filters()) }.disabled(filters == Filters())
+        } label: {
+            // filled when any filter is on, the usual macOS cue that the list is narrowed
+            Label("Filters", systemImage: filters == Filters() ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+        }
+        .menuIndicator(.hidden)  // a plain icon button, no chevron
+        .help("Filter the list")
+    }
 }
 
 // shortcut: SwiftUI's Table has no API for column widths or keyboard focus, so this finds the NSTableView behind it; replace if Table gains one.
@@ -628,7 +663,6 @@ struct ContentView: View {
             case .exposed: exposedView
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) { if m.view != .exposed { filterBar } }
         .safeAreaInset(edge: .bottom, spacing: 0) { statusBar(rows.count) }
         .inspector(isPresented: $m.showDetails) {
             details.inspectorColumnWidth(min: 280, ideal: 330, max: 460)
@@ -668,14 +702,13 @@ struct ContentView: View {
                 Label(m.running ? "Stop" : m.live ? "Live Scan" : "Scan",
                       systemImage: m.running ? "stop.fill" : m.live ? "dot.radiowaves.left.and.right" : "magnifyingglass")
             } primaryAction: { m.toggle() }
-            Button { m.start() } label: { Label("Scan Again", systemImage: "arrow.clockwise") }
-                .disabled(m.running || m.live || !m.started).help("Scan again")
             Picker("View", selection: $m.view) {
                 Text("Devices").tag(ViewKind.devices)
                 Text("Ports").tag(ViewKind.ports)
                 // Public tab hidden for now (the view and Shodan lookup stay in place): Text("Public").tag(ViewKind.exposed)
             }.pickerStyle(.segmented)
         }
+        ToolbarItem { filterMenu }
         ToolbarItem {
             Button { if let ip = m.selection { m.startRename(ip) } } label: { Label("Edit Name", systemImage: "pencil") }
                 .keyboardShortcut("r").disabled(m.selection == nil).help("Edit name (⌘R)")
@@ -688,32 +721,19 @@ struct ContentView: View {
 
     // MARK: filters
 
-    var filterBar: some View {
+    var filterMenu: some View {
         var ports = Dictionary(m.rows.flatMap(\.ports).map { ($0.port, $0.label) }, uniquingKeysWith: { a, _ in a })
         if case .port(let p) = m.filters.port, ports[p] == nil { ports[p] = Port(port: p, name: service(p)).label }  // keep the choice through a rescan
         let portChoices: [(String, PortFilter)] = [("All", .any), ("Any Open", .open), ("None Open", .closed)]
             + ports.sorted { $0.key < $1.key }.map { ($0.value, .port($0.key)) }
         let vendors = Set(m.rows.map(\.vendor)).union(m.filters.vendor.map { [$0] } ?? []).filter { !$0.isEmpty }.sorted()
         let vendorChoices: [(String, String?)] = [("All", nil)] + vendors.map { ($0, $0) }
-        let pingChoices: [(String, Bool?)] = [("All", nil), ("Online", true), ("No Reply", false)]
 
-        return VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                dropdown("Type", $m.filters.kind, KINDS_SHOWN)
-                dropdown("Vendor", $m.filters.vendor, vendorChoices)
-                dropdown("Ping", $m.filters.ping, pingChoices)
-                dropdown("Ports", $m.filters.port, portChoices,
-                         action: ("Scan Every Port on Selected Device", m.selection.map { !m.scanningPorts.contains($0) } ?? false,
-                                  { if let ip = m.selection { m.scanEveryPort(ip) } }))
-                dropdown("Show", $m.filters.favourites, [("All", false), ("Favourites", true)])
-                if m.filters != Filters() { Button("Clear") { m.filters = Filters() } }
-                Spacer()
-            }
-            .controlSize(.small)
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            Divider()
-        }
-        .background(.bar)
+        return FilterMenu(filters: m.filters, vendorChoices: vendorChoices, portChoices: portChoices,
+                          canScanPorts: m.selection.map { !m.scanningPorts.contains($0) } ?? false,
+                          set: { m.filters = $0 }, scanPorts: { if let ip = m.selection { m.scanEveryPort(ip) } })
+            .equatable()  // live scans republish the model every few seconds; rebuilding the menu then shut open submenus
+            .disabled(m.view == .exposed)
     }
 
     // MARK: public ports
@@ -888,9 +908,10 @@ struct ContentView: View {
                         ProgressView().progressViewStyle(.linear).frame(width: 110)
                     }
                 }
-                Text(statusText)
-                Spacer()
+                Text(statusText).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 8)
                 Text("Devices seen: \(m.rows.count)" + (shownCount != m.rows.count ? " (\(shownCount) shown)" : ""))
+                    .lineLimit(1).layoutPriority(1)
             }
             .font(.callout).foregroundStyle(.secondary)
             .padding(.horizontal, 12).padding(.vertical, 5)
