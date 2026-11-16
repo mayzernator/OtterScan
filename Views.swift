@@ -692,7 +692,9 @@ struct ContentView: View {
         let pingChoices: [(String, Bool?)] = [("All", nil), ("Online", true), ("No Reply", false)]
 
         return VStack(spacing: 0) {
-            HStack(spacing: 8) {
+            // Wraps onto more rows when narrow: a single row of fixed-size menus was wider than the column at a third of a
+            // laptop screen, which widened the whole content column so it was centred and clipped on both sides.
+            FlowLayout(spacing: 8) {
                 dropdown("Type", $m.filters.kind, KINDS_SHOWN)
                 dropdown("Vendor", $m.filters.vendor, vendorChoices)
                 dropdown("Ping", $m.filters.ping, pingChoices)
@@ -701,8 +703,8 @@ struct ContentView: View {
                                   { if let ip = m.selection { m.scanEveryPort(ip) } }))
                 dropdown("Show", $m.filters.favourites, [("All", false), ("Favourites", true)])
                 if m.filters != Filters() { Button("Clear") { m.filters = Filters() } }
-                Spacer()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .controlSize(.small)
             .padding(.horizontal, 12).padding(.vertical, 6)
             Divider()
@@ -882,9 +884,10 @@ struct ContentView: View {
                         ProgressView().progressViewStyle(.linear).frame(width: 110)
                     }
                 }
-                Text(statusText)
-                Spacer()
+                Text(statusText).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 8)
                 Text("Devices seen: \(m.rows.count)" + (shownCount != m.rows.count ? " (\(shownCount) shown)" : ""))
+                    .lineLimit(1).layoutPriority(1)
             }
             .font(.callout).foregroundStyle(.secondary)
             .padding(.horizontal, 12).padding(.vertical, 5)
