@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds OtterScan.app next to this script. Needs only the Xcode Command Line Tools.
-BBBset -e
+set -e
 cd "$(dirname "$0")"
 TARGET=arm64-apple-macos14.4
 SRC="Model.swift Scanner.swift"
