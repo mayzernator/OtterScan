@@ -147,7 +147,7 @@ struct NameEditor: NSViewRepresentable {
 // The details panel's title, editable in place: Return or clicking away saves a changed name, Escape reverts.
 struct TitleField: NSViewRepresentable {
     var title: String
-    var save: (String) -> Void
+    var save: (String) -> String  // returns the title to show afterwards, e.g. the default name after clearing it
 
     func makeNSView(context: Context) -> EndField {
         let f = EndField(string: title)
@@ -174,9 +174,18 @@ struct TitleField: NSViewRepresentable {
         func controlTextDidEndEditing(_ n: Notification) {
             guard let f = n.object as? NSTextField else { return }
             // unchanged text isn't a rename: saving the display form ("Jos Room") would pin it as a custom name
-            if f.stringValue != parent.title { let s = f.stringValue; DispatchQueue.main.async { self.parent.save(s) } }
+            guard f.stringValue != parent.title else { return }
+            let s = f.stringValue
+            DispatchQueue.main.async {
+                let shown = self.parent.save(s)
+                if f.currentEditor() == nil { f.stringValue = shown }  // a cleared name shows the default straight away
+            }
         }
         func control(_ c: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+            if sel == #selector(NSResponder.insertNewline(_:)) {  // Return saves and lets go of the field, like clicking away
+                c.window?.makeFirstResponder(nil)
+                return true
+            }
             guard sel == #selector(NSResponder.cancelOperation(_:)) else { return false }
             c.stringValue = parent.title
             c.window?.makeFirstResponder(nil)
@@ -969,7 +978,7 @@ struct ContentView: View {
             let busy = m.scanningPorts.contains(d.ip)
             Form {
                 Section {
-                    TitleField(title: m.title(d)) { m.rename(d.ip, to: $0) }
+                    TitleField(title: m.title(d)) { m.rename(d.ip, to: $0); return m.title(m.device(d.ip) ?? d) }
                         .frame(height: 24).help("Click to rename")
                     row("Hostname", d.host, .host, d)
                     row("Manufacturer", d.vendor, nil, d)
