@@ -19,6 +19,8 @@ do {
 }
 check(displayName("192.168.1.5") == "192.168.1.5", "IP left alone")
 check(displayName("Mays-iPhone.local.") == "Mays iPhone", "trailing-dot mDNS name")
+check(displayName("manmeet.boroniak-12.vic.edu.au") == "manmeet.boroniak-12.vic.edu.au", "FQDN keeps its hyphens")
+check(displayName("Mays-MacBook-Pro.local", removeDashes: false) == "Mays-MacBook-Pro", "toggle off keeps hyphens")
 check(checksum(ECHO) == 0, "ping packet checksum")
 
 // PTR reply: header, question "x.", answer pointing at question name, rdata "host.local"

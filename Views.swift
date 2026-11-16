@@ -395,7 +395,7 @@ struct GeneralPrefs: View {
                 }
                 Toggle(isOn: $removeDashes) {
                     Text("Remove dashes from device names (on by default)")
-                    Text("Shows Mays MacBook Pro instead of Mays-MacBook-Pro.")
+                    Text("Shows Mays MacBook Pro instead of Mays-MacBook-Pro. Domain names keep their dashes.")
                 }
                 Toggle(isOn: $wrapText) {
                     Text("Wrap text")
