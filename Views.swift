@@ -219,20 +219,6 @@ struct FlowLayout: Layout {
     }
 }
 
-// A menu button as wide as its current value. A Picker is as wide as its longest option, which pushed short values off-centre.
-func dropdown<T: Hashable>(_ title: String, _ value: Binding<T>, _ options: [(String, T)],
-                              action: (title: String, enabled: Bool, run: () -> Void)? = nil) -> some View {
-    Menu {
-        Picker(title, selection: value) {
-            ForEach(options, id: \.1) { Text($0.0).tag($0.1) }
-        }.pickerStyle(.inline).labelsHidden()
-        if let action { Divider(); Button(action.title, action: action.run).disabled(!action.enabled) }
-    } label: {
-        Text("\(title): \(options.first { $0.1 == value.wrappedValue }?.0 ?? "")").padding(.horizontal, 6)
-    }
-    .fixedSize()
-}
-
 // shortcut: SwiftUI's Table has no API for column widths or keyboard focus, so this finds the NSTableView behind it; replace if Table gains one.
 final class TableFinder: NSView {
     var found: ((NSTableView) -> Void)?
@@ -622,7 +608,6 @@ struct ContentView: View {
             case .exposed: exposedView
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) { if m.view != .exposed { filterBar } }
         .safeAreaInset(edge: .bottom, spacing: 0) { statusBar(rows.count) }
         .inspector(isPresented: $m.showDetails) {
             details.inspectorColumnWidth(min: 280, ideal: 330, max: 460)
@@ -662,14 +647,13 @@ struct ContentView: View {
                 Label(m.running ? "Stop" : m.live ? "Live Scan" : "Scan",
                       systemImage: m.running ? "stop.fill" : m.live ? "dot.radiowaves.left.and.right" : "magnifyingglass")
             } primaryAction: { m.toggle() }
-            Button { m.start() } label: { Label("Scan Again", systemImage: "arrow.clockwise") }
-                .disabled(m.running || m.live || !m.started).help("Scan again")
             Picker("View", selection: $m.view) {
                 Text("Devices").tag(ViewKind.devices)
                 Text("Ports").tag(ViewKind.ports)
                 // Public tab hidden for now (the view and Shodan lookup stay in place): Text("Public").tag(ViewKind.exposed)
             }.pickerStyle(.segmented)
         }
+        ToolbarItem { filterMenu }
         ToolbarItem {
             Button { if let ip = m.selection { m.startRename(ip) } } label: { Label("Edit Name", systemImage: "pencil") }
                 .keyboardShortcut("r").disabled(m.selection == nil).help("Edit name (⌘R)")
@@ -682,7 +666,7 @@ struct ContentView: View {
 
     // MARK: filters
 
-    var filterBar: some View {
+    var filterMenu: some View {
         var ports = Dictionary(m.rows.flatMap(\.ports).map { ($0.port, $0.label) }, uniquingKeysWith: { a, _ in a })
         if case .port(let p) = m.filters.port, ports[p] == nil { ports[p] = Port(port: p, name: service(p)).label }  // keep the choice through a rescan
         let portChoices: [(String, PortFilter)] = [("All", .any), ("Any Open", .open), ("None Open", .closed)]
@@ -691,25 +675,34 @@ struct ContentView: View {
         let vendorChoices: [(String, String?)] = [("All", nil)] + vendors.map { ($0, $0) }
         let pingChoices: [(String, Bool?)] = [("All", nil), ("Online", true), ("No Reply", false)]
 
-        return VStack(spacing: 0) {
-            // Wraps onto more rows when narrow: a single row of fixed-size menus was wider than the column at a third of a
-            // laptop screen, which widened the whole content column so it was centred and clipped on both sides.
-            FlowLayout(spacing: 8) {
-                dropdown("Type", $m.filters.kind, KINDS_SHOWN)
-                dropdown("Vendor", $m.filters.vendor, vendorChoices)
-                dropdown("Ping", $m.filters.ping, pingChoices)
-                dropdown("Ports", $m.filters.port, portChoices,
-                         action: ("Scan Every Port on Selected Device", m.selection.map { !m.scanningPorts.contains($0) } ?? false,
-                                  { if let ip = m.selection { m.scanEveryPort(ip) } }))
-                dropdown("Show", $m.filters.favourites, [("All", false), ("Favourites", true)])
-                if m.filters != Filters() { Button("Clear") { m.filters = Filters() } }
+        return Menu {
+            choice("Type", $m.filters.kind, KINDS_SHOWN)
+            choice("Vendor", $m.filters.vendor, vendorChoices)
+            choice("Ping", $m.filters.ping, pingChoices)
+            Menu("Ports") {
+                Picker("Ports", selection: $m.filters.port) {
+                    ForEach(portChoices, id: \.1) { Text($0.0).tag($0.1) }
+                }.pickerStyle(.inline).labelsHidden()
+                Divider()
+                Button("Scan Every Port on Selected Device") { if let ip = m.selection { m.scanEveryPort(ip) } }
+                    .disabled(m.selection.map { m.scanningPorts.contains($0) } ?? true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .controlSize(.small)
-            .padding(.horizontal, 12).padding(.vertical, 6)
+            choice("Show", $m.filters.favourites, [("All", false), ("Favourites", true)])
             Divider()
+            Button("Clear Filters") { m.filters = Filters() }.disabled(m.filters == Filters())
+        } label: {
+            // filled when any filter is on, the usual macOS cue that the list is narrowed
+            Label("Filters", systemImage: m.filters == Filters() ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
         }
-        .background(.bar)
+        .disabled(m.view == .exposed)
+        .help("Filter the list")
+    }
+
+    // A submenu of options with a checkmark on the current one.
+    func choice<T: Hashable>(_ title: String, _ value: Binding<T>, _ options: [(String, T)]) -> some View {
+        Picker(title, selection: value) {
+            ForEach(options, id: \.1) { Text($0.0).tag($0.1) }
+        }.pickerStyle(.menu)
     }
 
     // MARK: public ports
