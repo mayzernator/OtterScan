@@ -42,6 +42,20 @@ final class EndField: NSTextField {
         if ok { DispatchQueue.main.async { self.currentEditor()?.selectedRange = NSRange(location: self.stringValue.utf16.count, length: 0) } }
         return ok
     }
+    // Take focus as soon as the field is on screen. Tried twice: a context menu or toolbar click that started the
+    // edit can hand focus back to the table just after the field appears, leaving no caret at all.
+    var focusOnShow = false
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard focusOnShow, let w = window else { return }
+        focusOnShow = false
+        for delay in [0.0, 0.15] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.window === w, self.currentEditor() == nil else { return }
+                w.makeFirstResponder(self)  // becomeFirstResponder above puts the caret at the end
+            }
+        }
+    }
 }
 
 // The note box for the table (blank) and the details panel (with a prompt).
@@ -103,7 +117,7 @@ struct NameEditor: NSViewRepresentable {
         f.font = .systemFont(ofSize: NSFont.systemFontSize)
         f.lineBreakMode = .byTruncatingTail
         f.delegate = context.coordinator
-        DispatchQueue.main.async { f.window?.makeFirstResponder(f) }  // EndField puts the caret at the end
+        f.focusOnShow = true  // EndField puts the caret at the end
         return f
     }
 
