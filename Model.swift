@@ -457,11 +457,10 @@ func vendor(_ mac: String) -> String {
 }
 
 // Device column text: no ".local", hyphens as spaces ("Mays-MacBook-Pro.local" -> "Mays MacBook Pro"). Display only.
-// A real DNS name ("manmeet.school-12.vic.edu.au") keeps its hyphens: they're part of the domain, not word breaks.
 func displayName(_ s: String) -> String {
     var n = s.hasSuffix(".") ? String(s.dropLast()) : s  // mDNS names can end in "local."
     if n.lowercased().hasSuffix(".local") { n = String(n.dropLast(6)) }
-    return n.contains(".") ? n : n.replacingOccurrences(of: "-", with: " ")
+    return n.replacingOccurrences(of: "-", with: " ")
 }
 
 func basic(_ f: Found) -> Device {  // what we know instantly; names can take 30s to time out

@@ -18,7 +18,6 @@ do {
     check(savedRange(Net(ipv4("172.16.0.1")!, 24), in: raw) == nil, "unknown network has no range")
 }
 check(displayName("192.168.1.5") == "192.168.1.5", "IP left alone")
-check(displayName("manmeet.boroniak-12.vic.edu.au") == "manmeet.boroniak-12.vic.edu.au", "FQDN keeps its hyphens")
 check(displayName("Mays-iPhone.local.") == "Mays iPhone", "trailing-dot mDNS name")
 check(checksum(ECHO) == 0, "ping packet checksum")
 
