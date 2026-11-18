@@ -271,7 +271,7 @@ struct FilterMenu: View, Equatable {
         Menu {
             choice("Type", \.kind, KINDS_SHOWN)
             choice("Vendor", \.vendor, vendorChoices)
-            choice("Ping", \.ping, [("All", nil), ("Online", true), ("No Reply", false)])
+            choice("Ping", \.ping, [("All", nil), ("Online", true), ("Offline", false)])
             Menu("Ports") {
                 Picker("Ports", selection: binding(\.port)) {
                     ForEach(portChoices, id: \.1) { Text($0.0).tag($0.1) }
@@ -993,7 +993,7 @@ struct ContentView: View {
                         }.buttonStyle(.link).help("Open in Safari")
                     }
                     LabeledContent("Ping") {
-                        Label(d.ping ? "Online" : "No reply", systemImage: "circle.fill").foregroundStyle(d.ping ? .green : .red)
+                        Label(d.ping ? "Online" : "Offline", systemImage: "circle.fill").foregroundStyle(d.ping ? .green : .red)
                     }
                     // on its own line and left-aligned: as a right-hand value, its left edge moved with the width of the tags
                     VStack(alignment: .leading, spacing: 6) {
