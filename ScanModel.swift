@@ -18,6 +18,28 @@ func notify(_ title: String, _ body: String, ip: String) {
     UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
 }
 
+// Checks this Mac's own address every few seconds and notifies when it changes (Settings › Notifications).
+// Runs whether or not a scan is going: a new DHCP lease or a network switch can happen any time.
+final class IPWatcher {
+    private var last: String?
+    private var timer: Timer?
+
+    func start() {
+        last = current()
+        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.check() }  // one UDP connect: sends nothing
+    }
+
+    private func current() -> String? { (try? routeIP()).flatMap { $0 == 0 ? nil : ipv4($0) } }
+
+    private func check() {
+        let now = current()
+        if ipChanged(last: last, now: now), let old = last, let new = now, UserDefaults.standard.bool(forKey: "notifyIPChange") {
+            notify("This Mac's IP address changed", "\(old) → \(new)", ip: new)
+        }
+        if now != nil { last = now }  // remember the last real address across an offline gap
+    }
+}
+
 enum ViewKind: String, CaseIterable { case devices, ports, exposed }
 
 final class ScanModel: ObservableObject {

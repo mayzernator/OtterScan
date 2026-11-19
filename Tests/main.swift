@@ -22,6 +22,10 @@ check(displayName("Mays-iPhone.local.") == "Mays iPhone", "trailing-dot mDNS nam
 check(displayName("manmeet.boroniak-12.vic.edu.au") == "manmeet.boroniak-12.vic.edu.au", "FQDN keeps its hyphens")
 check(displayName("Mays-MacBook-Pro.local", removeDashes: false) == "Mays-MacBook-Pro", "toggle off keeps hyphens")
 check(checksum(ECHO) == 0, "ping packet checksum")
+check(ipChanged(last: "10.0.0.5", now: "10.0.0.9"), "new address is a change")
+check(!ipChanged(last: "10.0.0.5", now: "10.0.0.5"), "same address is no change")
+check(!ipChanged(last: "10.0.0.5", now: nil), "going offline is no change")
+check(!ipChanged(last: nil, now: "10.0.0.5"), "first address seen is no change")
 
 // PTR reply: header, question "x.", answer pointing at question name, rdata "host.local"
 let question: [UInt8] = [1, 0x78, 0] + header([12, 1])

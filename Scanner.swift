@@ -83,6 +83,12 @@ func interfaces() -> [Iface] {
 }
 
 func localNet() throws -> Net {
+    let ip = try routeIP()
+    return Net(ip, interfaces().first { $0.ip == ip }?.mask.nonzeroBitCount ?? 24)
+}
+
+// This Mac's own address on the route out, the one other devices see it at.
+func routeIP() throws -> UInt32 {
     let s = socket(AF_INET, SOCK_DGRAM, 0)
     defer { close(s) }
     var out = inet("8.8.8.8", 80)  // UDP connect sends nothing; just picks the route
@@ -90,8 +96,7 @@ func localNet() throws -> Net {
     var me = sockaddr_in()
     var len = socklen_t(MemoryLayout<sockaddr_in>.size)
     guard withAddr(&me, { p, _ in getsockname(s, p, &len) }) == 0 else { throw ScanError(errorText()) }
-    let ip = UInt32(bigEndian: me.sin_addr.s_addr)
-    return Net(ip, interfaces().first { $0.ip == ip }?.mask.nonzeroBitCount ?? 24)
+    return UInt32(bigEndian: me.sin_addr.s_addr)
 }
 
 // The network to scan: the interface and optional From/To range picked in Settings, else this Mac's own subnet.

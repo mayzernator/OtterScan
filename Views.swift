@@ -491,9 +491,15 @@ struct NotificationPrefs: View {
     @AppStorage("notifyNewLeave") var newLeave = false
     @AppStorage("notifyKnownJoin") var knownJoin = false
     @AppStorage("notifyKnownLeave") var knownLeave = false
+    @AppStorage("notifyIPChange") var ipChange = false
 
     var body: some View {
         Form {
+            Section {
+                Toggle(isOn: $ipChange) { Text("IP address changes"); Text("This Mac gets a new address, e.g. a new DHCP lease or another network.") }
+            } header: {
+                InfoHeader("This Mac", "Checked every few seconds, even when no scan is running. Losing the connection and getting the same address back is not a change.")
+            }
             Section {
                 Toggle(isOn: $knownJoin) { Text("Joins the network"); Text("A device you've seen before comes back.") }
                 Toggle(isOn: $knownLeave) { Text("Leaves the network"); Text("A device you've seen before stops answering.") }
@@ -510,8 +516,8 @@ struct NotificationPrefs: View {
         .formStyle(.grouped)
         .scrollDisabled(true)  // the outer ScrollView scrolls; the form keeps its full height so the window sizes to it
         .fixedSize(horizontal: false, vertical: true)
-        .onChange(of: [newJoin, newLeave, knownJoin, knownLeave]) {
-            if [newJoin, newLeave, knownJoin, knownLeave].contains(true) { askToNotify() }  // permission is asked for here, not at launch
+        .onChange(of: [newJoin, newLeave, knownJoin, knownLeave, ipChange]) {
+            if [newJoin, newLeave, knownJoin, knownLeave, ipChange].contains(true) { askToNotify() }  // permission is asked for here, not at launch
         }
     }
 }

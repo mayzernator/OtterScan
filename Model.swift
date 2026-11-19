@@ -256,6 +256,10 @@ struct PresenceEvent: Equatable {
     let key: String, joined: Bool, known: Bool
 }
 
+// This Mac's address went from `last` to `now` (nil: offline). Going offline is a gap, not a change,
+// so dropping off and coming back on a new address is one change, and coming back on the same one is none.
+func ipChanged(last: String?, now: String?) -> Bool { last != nil && now != nil && last != now }
+
 func presenceEvents(previous: Set<String>, current: Set<String>, known: Set<String>) -> [PresenceEvent] {
     current.subtracting(previous).sorted().map { PresenceEvent(key: $0, joined: true, known: known.contains($0)) }
         + previous.subtracting(current).sorted().map { PresenceEvent(key: $0, joined: false, known: known.contains($0)) }

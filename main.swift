@@ -3,10 +3,13 @@ import SwiftUI
 import UserNotifications
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    private let ipWatcher = IPWatcher()
+
     func applicationDidFinishLaunching(_ note: Notification) {
         prepareProcess()
         DispatchQueue.global().async { askForLocalNetwork() }  // so macOS asks for Local Network access right away
         if Bundle.main.bundleIdentifier != nil { UNUserNotificationCenter.current().delegate = self }  // asks for nothing yet
+        ipWatcher.start()
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { checkForUpdatesAtLaunch() }  // after the window is up
         #if FAKE_UPDATE
         if ProcessInfo.processInfo.environment["FAKE_AUTO"] != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { checkForUpdates() } }
