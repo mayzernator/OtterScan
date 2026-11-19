@@ -34,7 +34,7 @@ final class IPWatcher {
     private func check() {
         let now = current()
         if ipChanged(last: last, now: now), let old = last, let new = now, UserDefaults.standard.bool(forKey: "notifyIPChange") {
-            notify("This Mac's IP address changed", "\(old) → \(new)", ip: new)
+            notify("Your IP is now \(new)", "Previously \(old)", ip: new)
         }
         if now != nil { last = now }  // remember the last real address across an offline gap
     }
