@@ -243,8 +243,14 @@ do {
 // reading the kernel's neighbor tables must not crash, whatever they hold
 _ = arpTable(); _ = ndpTable()
 // ...and a short or lying record from the kernel must not crash the parser either
-for junk in [[UInt8](repeating: 0xff, count: 300), [UInt8](repeating: 0, count: 300), [4, 0] + [UInt8](repeating: 9, count: 298),
-             [120, 0] + [UInt8](repeating: 0, count: 90) + [255] + [UInt8](repeating: 6, count: 207), [200, 0] + [UInt8](repeating: 6, count: 298)] {
+func filler(_ head: [UInt8], _ byte: UInt8, _ count: Int) -> [UInt8] { head + [UInt8](repeating: byte, count: count) }  // one step each: a single big literal is too slow to type-check
+var junkRecords = [[UInt8]]()
+junkRecords.append(filler([], 0xff, 300))
+junkRecords.append(filler([], 0, 300))
+junkRecords.append(filler([4, 0], 9, 298))
+junkRecords.append(filler(filler([120, 0], 0, 90) + [255], 6, 207))
+junkRecords.append(filler([200, 0], 6, 298))
+for junk in junkRecords {
     for family in [AF_INET, AF_INET6] { _ = parseNeighbors(junk, junk.count, family) }
 }
 check(parseNeighbors([], 0, AF_INET).isEmpty, "empty neighbor table")
