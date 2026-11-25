@@ -3,7 +3,7 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 
-let buyMeACoffeeURL: URL? = nil  // set to https://buymeacoffee.com/<handle> once the account exists; nil hides the Settings button
+let kofiURL: URL? = URL(string: "https://ko-fi.com/otterscan")  // nil hides the Settings button
 
 // Sorts like the old page did: blanks stay at the bottom either way, ties fall back to IP address.
 struct FieldOrder: SortComparator, Hashable {
@@ -459,8 +459,8 @@ struct GeneralPrefs: View {
                         Button("Check Now") { checkForUpdates() }
                     }
                 }
-                if let buyMeACoffeeURL {
-                    Link(destination: buyMeACoffeeURL) { Label("Buy Me a Coffee", systemImage: "cup.and.saucer.fill") }
+                if let kofiURL {
+                    Link(destination: kofiURL) { Label("Buy Me a Coffee (Ko-fi)", systemImage: "cup.and.saucer.fill") }
                 }
             }
         }
