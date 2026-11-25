@@ -27,4 +27,4 @@ The blueprint background is drawn by `make_dmg_bg.swift`.
 
 ## Coming soon...
 - Release across all major platforms (incl. mobile)
-- ~~Auto updates~~
+- Network status / health monitoring
