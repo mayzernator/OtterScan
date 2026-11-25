@@ -53,7 +53,7 @@ enum Mode: String, CaseIterable, Identifiable {
     var workers: Int { self == .off ? 64 : self == .common ? 32 : 8 }
 }
 
-// Raw values match the keys in settings.json, so saved column choices carry over from the Python version.
+// Raw values are the saved column ids and the export's JSON keys.
 enum Field: String, CaseIterable, Identifiable {
     case hostname, ip, host, ping, ports, mac, ipv6_local, ipv6_global, identification, mdns, smb, smb_domain, dns, manufacturer, model, note
     var id: String { rawValue }
