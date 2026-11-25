@@ -49,7 +49,8 @@ final class Stop {
 enum Mode: String, CaseIterable, Identifiable {
     case off, common, custom, all
     var id: String { rawValue }
-    var workers: Int { self == .off ? 64 : self == .common ? 32 : self == .custom ? 16 : 8 }
+    // custom and all can hold BATCH sockets per device, so 8 at a time leaves room under the open-file limit for a second scan
+    var workers: Int { self == .off ? 64 : self == .common ? 32 : 8 }
 }
 
 // Raw values match the keys in settings.json, so saved column choices carry over from the Python version.

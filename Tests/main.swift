@@ -242,5 +242,12 @@ do {
 
 // reading the kernel's neighbor tables must not crash, whatever they hold
 _ = arpTable(); _ = ndpTable()
+// ...and a short or lying record from the kernel must not crash the parser either
+for junk in [[UInt8](repeating: 0xff, count: 300), [UInt8](repeating: 0, count: 300), [4, 0] + [UInt8](repeating: 9, count: 298),
+             [120, 0] + [UInt8](repeating: 0, count: 90) + [255] + [UInt8](repeating: 6, count: 207), [200, 0] + [UInt8](repeating: 6, count: 298)] {
+    for family in [AF_INET, AF_INET6] { _ = parseNeighbors(junk, junk.count, family) }
+}
+check(parseNeighbors([], 0, AF_INET).isEmpty, "empty neighbor table")
+check([Mode.custom, .all].allSatisfy { $0.workers * BATCH * 2 <= 8192 }, "two overlapping port scans fit in the open-file limit")
 
 if failures == 0 { print("ok") } else { print("\(failures) check(s) failed"); exit(1) }

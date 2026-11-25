@@ -104,9 +104,9 @@ func chosenNets() throws -> [Net] {
     let d = UserDefaults.standard
     let typed = (d.string(forKey: "scanTargets") ?? "").trimmingCharacters(in: .whitespaces)
     if !typed.isEmpty { return try parseNets(typed) }  // a typed list replaces the interface and From/To
-    var net = try localNet()
-    let name = d.string(forKey: "scanInterface") ?? ""
-    if let i = interfaces().first(where: { $0.name == name }) { net = Net(i.ip, i.mask.nonzeroBitCount) }  // a vanished interface falls back to automatic
+    // the picked interface first: it can be scanned without a route to the internet, which localNet needs. A vanished one falls back to automatic.
+    let picked = interfaces().first { $0.name == d.string(forKey: "scanInterface") }
+    let net = try picked.map { Net($0.ip, $0.mask.nonzeroBitCount) } ?? localNet()
     let r = savedRange(net, in: d.string(forKey: "scanRanges") ?? "")  // None for a network never customised: scan all of it
     return [try checkedNet(try customRange(net, r?.from ?? "", r?.to ?? ""))]
 }
@@ -210,13 +210,19 @@ func neighbors(_ family: Int32) -> [(ip: String, mac: String)] {
     n *= 2  // the table can grow between the two calls
     var b = [UInt8](repeating: 0, count: n)
     guard sysctl(&mib, 6, &b, &n, nil, 0) == 0 else { return [] }
+    return parseNeighbors(b, n, family)
+}
+
+// Split out so a test can feed it short or lying records.
+func parseNeighbors(_ b: [UInt8], _ n: Int, _ family: Int32) -> [(ip: String, mac: String)] {
     var out = [(ip: String, mac: String)]()
     var i = 0
     while i + 100 < n {
         let len = Int(b[i]) | Int(b[i + 1]) << 8
-        if len == 0 { break }
+        if len == 0 || i + len > n { break }
         let sa = i + MemoryLayout<rt_msghdr>.size
         let dl = sa + ((Int(b[sa]) + 3) & ~3)
+        guard sa + 24 <= i + len, dl + 8 <= i + len else { i += len; continue }  // too short to hold both addresses
         let nlen = Int(b[dl + 5]), alen = Int(b[dl + 6])
         if alen == 6, dl + 8 + nlen + 6 <= n {
             let at = dl + 8 + nlen
@@ -275,9 +281,10 @@ func udp(_ ip: String, _ port: Int, _ pkt: [UInt8]) -> [UInt8] {
     defer { close(s) }
     setTimeouts(s)
     var to = inet(ip, port)
+    guard withAddr(&to, { connect(s, $0, $1) }) == 0 else { return [] }  // connected: a datagram from any other host is dropped, so only the asked device can answer
     var buf = [UInt8](repeating: 0, count: 2048)
     for _ in 0..<2 {  // UDP gets dropped when dozens of queries go out at once
-        if withAddr(&to, { sendto(s, pkt, pkt.count, 0, $0, $1) }) < 0 { continue }
+        if send(s, pkt, pkt.count, 0) < 0 { continue }
         let n = recv(s, &buf, buf.count, 0)
         if n >= 0 { return Array(buf[0..<n]) }
     }
@@ -605,7 +612,7 @@ func events(_ nets: [Net], _ mode: Mode = .off, live: Bool = false, stop: Stop =
 func runCLI(_ args: [String]) throws {
     prepareProcess()
     let plain = args.filter { !$0.hasPrefix("--") }
-    let nets = try plain.first.map(parseNets) ?? [localNet()]
+    let nets = try plain.first.map(parseNets) ?? [checkedNet(localNet())]
     let csv = args.contains("--csv"), json = args.contains("--json")
     if !csv && !json { print("Scanning \(nets.map(\.description).joined(separator: ", ")) ...") }  // keep stdout clean for export
     var mode: Mode = args.contains("--all-ports") ? .all : args.contains("--ports") ? .common : .off

@@ -242,7 +242,7 @@ final class ScanModel: ObservableObject {
             do {
                 let nets = try chosenNets()
                 _ = try portsToScan(mode)  // a bad custom port list fails now, not after the sweep
-                let label = nets.count == 1 ? nets[0].description : "\(nets.count) ranges"
+                let label = nets.map(\.description).joined(separator: ", ")  // also what tells one scanned network from another (passFinished)
                 DispatchQueue.main.async { if self?.session == id { self?.range = "Scan of \(label)" } }
                 try events(nets, mode, live: live, stop: stop, pause: pause) { e in
                     DispatchQueue.main.async { self?.handle(e, mode, live, id) }
@@ -421,10 +421,16 @@ final class ScanModel: ObservableObject {
         }
     }
 
+    // The "Open in Browser" list: the device's web ports, then the URLs saved for it, each once.
+    func links(_ d: Device) -> [String] {
+        var seen = Set<String>()
+        return (d.webURLs + (urls[d.key] ?? []) + (urls[d.ip] ?? [])).filter { seen.insert($0).inserted }  // urls[d.ip]: saved before URLs followed the MAC
+    }
+
     func addURL(_ s: String, for ip: String) {
         let u = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard openInSafari(u), !(urls[ip] ?? []).contains(u) else { return }  // saved only once it's accepted
-        urls[ip, default: []].append(u)
+        guard let d = device(ip), openInSafari(u), !links(d).contains(u) else { return }  // saved only once it's accepted
+        urls[d.key, default: []].append(u)
         if let data = try? JSONEncoder().encode(urls) { UserDefaults.standard.set(data, forKey: "urls") }
     }
 

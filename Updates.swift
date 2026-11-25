@@ -179,6 +179,7 @@ private let githubMark: NSImage? = {
 // A URLSession download carries no quarantine flag, so Gatekeeper never asks for "Open Anyway".
 // A plain window with a progress bar, not a modal alert: a modal session holds off terminate until it is clicked away.
 private func install(_ dmg: URL, version: String) {
+    guard progressWindow == nil else { return }  // one at a time: two installs would race to swap the same bundle
     var task: URLSessionDownloadTask!
     task = URLSession.shared.downloadTask(with: dmg) { file, _, error in
         var failure: String?
@@ -252,10 +253,23 @@ private func runInstaller(_ img: URL, mount: URL) throws {
         try p.run(); p.waitUntilExit()
         if p.terminationStatus != 0 { throw ScanError("\(args[0]) failed") }
     }
+    defer { try? FileManager.default.removeItem(at: img) }
     try sh(["hdiutil", "attach", img.path, "-mountpoint", mount.path, "-nobrowse", "-quiet"])
-    let app = Bundle.main.bundlePath
-    let script = "while kill -0 $1 2>/dev/null; do sleep 0.2; done; rm -rf \"$2\" && ditto \"$3/OtterScan.app\" \"$2\"; xattr -cr \"$2\"; hdiutil detach \"$3\" -quiet; rm -f \"$4\"; open \"$2\""
+    defer { try? sh(["hdiutil", "detach", mount.path, "-quiet"]) }
+    // Copy beside the installed app while this one still runs, so a failure (an unwritable folder, a bad image) reaches the
+    // "Couldn't install" alert and leaves the installed app alone. The script then only swaps the two and reopens.
+    // Known limit: the image is trusted because it came over TLS from this repo's releases; an ad-hoc signed app has no signature to check.
+    let app = Bundle.main.bundlePath, new = app + ".new"
+    do {
+        try? FileManager.default.removeItem(atPath: new)
+        try sh(["ditto", mount.appendingPathComponent("OtterScan.app").path, new])
+        try sh(["xattr", "-cr", new])
+    } catch {
+        try? FileManager.default.removeItem(atPath: new)
+        throw ScanError("OtterScan couldn't be replaced in \((app as NSString).deletingLastPathComponent). Move it to a folder you can change, such as Applications, and try again.")
+    }
+    let script = "while kill -0 $1 2>/dev/null; do sleep 0.2; done; rm -rf \"$2\" && mv \"$3\" \"$2\"; open \"$2\""
     let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/sh")
-    p.arguments = ["-c", script, "sh", String(getpid()), app, mount.path, img.path]
+    p.arguments = ["-c", script, "sh", String(getpid()), app, new]
     try p.run()
 }
