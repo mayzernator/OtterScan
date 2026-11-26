@@ -323,6 +323,12 @@ struct TableAccess: NSViewRepresentable {
     func updateNSView(_ v: TableFinder, context: Context) { if !m.hasTable { v.look() } }
 }
 
+struct ToolTip: NSViewRepresentable {  // AppKit tooltip: SwiftUI's .help didn't show over a disabled Form row
+    let text: String
+    func makeNSView(context: Context) -> NSView { let v = NSView(); v.toolTip = text; return v }
+    func updateNSView(_ v: NSView, context: Context) { if v.toolTip != text { v.toolTip = text } }  // re-setting it closes a showing tooltip
+}
+
 struct PreferencesView: View {
     @AppStorage("settingsTab") var tab = "general"
     var body: some View {
@@ -455,10 +461,12 @@ struct GeneralPrefs: View {
                 MenuRow("Port check", "Which ports to check on each device. Changing it rescans.", selection: $mode) {
                     Text("Off").tag("off"); Text("Common (default)").tag("common"); Text("Custom").tag("custom"); Text("All (slow)").tag("all")
                 }
-                if mode == "custom" {
-                    TextField("Custom ports", text: $customPorts, prompt: Text("22,80,443,8000-8100"))
-                    if let e = portsProblem { Text(e).foregroundStyle(.red).font(.caption) }
+                TextField(text: $customPorts, prompt: Text("22,80,443,8000-8100")) {
+                    Text("Custom ports").foregroundStyle(mode == "custom" ? Color.primary : Color(nsColor: .disabledControlTextColor))  // Form doesn't grey a disabled field's label
                 }
+                    .disabled(mode != "custom").padding(.leading, 20)
+                    .overlay { if mode != "custom" { ToolTip(text: "This option is only available with a custom port check.") } }
+                if mode == "custom", let e = portsProblem { Text(e).foregroundStyle(.red).font(.caption).padding(.leading, 20) }
                 ToggleRow("Open details on select", "Automatically shows the details panel when you pick a device.", isOn: $autoDetails)
                 ToggleRow("Remove dashes from device names (on by default)", "Shows 'Mays MacBook Pro' instead of 'Mays-MacBook-Pro'. Domain names keep their dashes.", isOn: $removeDashes)
                 ToggleRow("Wrap text", "Longer fields extend vertically (using more lines) instead of being cut off.", isOn: $wrapText)
