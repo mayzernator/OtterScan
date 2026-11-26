@@ -398,7 +398,7 @@ struct GeneralPrefs: View {
                     Text("Custom ports").foregroundStyle(mode == "custom" ? Color.primary : Color(nsColor: .disabledControlTextColor))  // Form doesn't grey a disabled field's label
                 }
                     .disabled(mode != "custom").padding(.leading, 20)
-                    .overlay { if mode != "custom" { ToolTip(text: "This option is only available with a custom port check.") } }
+                    .overlay { if mode != "custom" { ToolTip(text: "Set port check to custom to use this.") } }
                 if mode == "custom", let e = portsProblem { Text(e).foregroundStyle(.red).font(.caption).padding(.leading, 20) }
                 ToggleRow("Open details on select", "Automatically shows the details panel when you pick a device.", isOn: $autoDetails)
                 ToggleRow("Remove dashes from device names (on by default)", "Shows 'Mays MacBook Pro' instead of 'Mays-MacBook-Pro'. Domain names keep their dashes.", isOn: $removeDashes)
@@ -687,7 +687,9 @@ struct ContentView: View {
             Menu {
                 Picker("Scan type", selection: $m.live) {
                     Label("Live Scan", systemImage: "dot.radiowaves.left.and.right").tag(true)
+                        .help("Live scan keeps scanning so you see devices as they come and go. (⌘L)")
                     Label("Scan", systemImage: "magnifyingglass").tag(false)
+                        .help("Scan your whole network once. (⌘S)")
                 }.pickerStyle(.inline)
             } label: {
                 Label(m.running ? "Stop" : m.live ? "Live Scan" : "Scan",
@@ -695,18 +697,20 @@ struct ContentView: View {
             } primaryAction: { m.toggle() }
             Picker("View", selection: $m.view) {
                 Text("Devices").tag(ViewKind.devices)
+                    .help("Lists all the devices on the network, in a table format. (⌘1)")
                 Text("Ports").tag(ViewKind.ports)
+                    .help("Displays the ports open on each device of the network, in a bento-box style format. (⌘2)")
                 // Public tab hidden for now (the view and Shodan lookup stay in place): Text("Public").tag(ViewKind.exposed)
             }.pickerStyle(.segmented)
         }
         ToolbarItem { filterMenu }
         ToolbarItem {
             Button { if let ip = m.selection { m.startRename(ip) } } label: { Label("Edit Name", systemImage: "pencil") }
-                .keyboardShortcut("r").disabled(m.selection == nil).help("Edit name (⌘R)")
+                .keyboardShortcut("r").disabled(m.selection == nil).help("Renames a device (⌘R)")
         }
         ToolbarItem {
             Button { m.showDetails.toggle() } label: { Label("Details", systemImage: "sidebar.trailing") }
-                .help("Show or hide device details")
+                .help("Show or hide device details (⌘B)")
         }
     }
 
