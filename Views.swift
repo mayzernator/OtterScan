@@ -361,6 +361,59 @@ func applyStayOnTop() {
     }
 }
 
+// Every Settings row puts its title and description in the same fixed-width block, so the text wraps identically
+// whichever option a menu shows, and the control sits at the right edge with at least `settingsGap` before it.
+// (Settings is 480pt wide: 240 + 24 + the widest menu fits.)
+private let settingsGap: CGFloat = 24
+
+struct SettingText: View {
+    let title: String, detail: LocalizedStringKey
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            Text(detail).font(.callout).foregroundStyle(.secondary)
+        }
+        // A cap, not a fixed width: the text takes up to 300 but gives way to a wide menu instead of pushing the row (and the box) wider.
+        .frame(maxWidth: 300, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+struct MenuRow<Value: Hashable, Options: View>: View {
+    let title: String, detail: LocalizedStringKey
+    @Binding var selection: Value
+    @ViewBuilder var options: Options
+
+    init(_ title: String, _ detail: LocalizedStringKey, selection: Binding<Value>, @ViewBuilder options: () -> Options) {
+        (self.title, self.detail, self._selection, self.options) = (title, detail, selection, options())
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            SettingText(title: title, detail: detail)
+            Spacer(minLength: settingsGap)
+            Picker(title, selection: $selection) { options }.labelsHidden().fixedSize()
+        }
+    }
+}
+
+struct ToggleRow: View {
+    let title: String, detail: LocalizedStringKey
+    @Binding var isOn: Bool
+
+    init(_ title: String, _ detail: LocalizedStringKey, isOn: Binding<Bool>) {
+        (self.title, self.detail, self._isOn) = (title, detail, isOn)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            SettingText(title: title, detail: detail)
+            Spacer(minLength: settingsGap)
+            Toggle(title, isOn: $isOn).labelsHidden()
+        }
+    }
+}
+
 struct GeneralPrefs: View {
     @AppStorage("defaultLive") var live = false
     @AppStorage("defaultMode") var mode = "common"
@@ -390,58 +443,31 @@ struct GeneralPrefs: View {
                 }.padding(.vertical, 4)
             }
             Section("When OtterScan Opens") {
-                Toggle(isOn: $liveAtLaunch) {
-                    Text("Start scanning right away")
-                    Text("Begins a scan as soon as the window opens.")
+                ToggleRow("Start scanning right away", "Begins a scan as soon as the window opens.", isOn: $liveAtLaunch)
+                MenuRow("Scan type", "Live Scan keeps scanning so you see devices as they come and go.", selection: $live) {
+                    Text("Scan").tag(false); Text("Live Scan").tag(true)
                 }
-                Picker(selection: $live) { Text("Scan").tag(false); Text("Live Scan").tag(true) } label: {
-                    Text("Scan type")
-                    Text("Live Scan keeps rescanning so you see devices come and go.")
-                }
-                Picker(selection: $pause) { ForEach([5.0, 10, 30, 60], id: \.self) { Text("\(Int($0)) seconds").tag($0) } } label: {
-                    Text("Live Scan checks every")
-                    Text("Shorter notices changes sooner but makes more network traffic.")
+                MenuRow("Live Scan checks every", "Shorter notices changes sooner but makes more network traffic.", selection: $pause) {
+                    ForEach([5.0, 10, 30, 60], id: \.self) { Text("\(Int($0)) seconds").tag($0) }
                 }
             }
             Section("Device Table") {
-                Picker(selection: $mode) { Text("Off").tag("off"); Text("Common (default)").tag("common"); Text("Custom").tag("custom"); Text("All (slow)").tag("all") } label: {
-                    Text("Port check")
-                    Text("Which ports to check on each device. Changing it rescans.")
+                MenuRow("Port check", "Which ports to check on each device. Changing it rescans.", selection: $mode) {
+                    Text("Off").tag("off"); Text("Common (default)").tag("common"); Text("Custom").tag("custom"); Text("All (slow)").tag("all")
                 }
                 if mode == "custom" {
                     TextField("Custom ports", text: $customPorts, prompt: Text("22,80,443,8000-8100"))
                     if let e = portsProblem { Text(e).foregroundStyle(.red).font(.caption) }
                 }
-                Toggle(isOn: $autoDetails) {
-                    Text("Open details on select")
-                    Text("Automatically shows the details panel when you pick a device.")
-                }
-                Toggle(isOn: $removeDashes) {
-                    Text("Remove dashes from device names (on by default)")
-                    Text("Shows 'Mays MacBook Pro' instead of 'Mays-MacBook-Pro'. Domain names keep their dashes.")
-                }
-                Toggle(isOn: $wrapText) {
-                    Text("Wrap text")
-                    Text("Longer fields extend vertically (using more lines) instead of being cut off.")
-                }
-                Toggle(isOn: $wrapNotes) {
-                    Text("Wrap notes column")
-                    Text("Longer **notes** use more lines too.")
-                }.disabled(!wrapText).padding(.leading, 20)
-                Toggle(isOn: $friendlyPorts) {
-                    Text("Friendly port names")
-                    Text("Shows 'SSH 22' instead of just '22'.")
-                }
+                ToggleRow("Open details on select", "Automatically shows the details panel when you pick a device.", isOn: $autoDetails)
+                ToggleRow("Remove dashes from device names (on by default)", "Shows 'Mays MacBook Pro' instead of 'Mays-MacBook-Pro'. Domain names keep their dashes.", isOn: $removeDashes)
+                ToggleRow("Wrap text", "Longer fields extend vertically (using more lines) instead of being cut off.", isOn: $wrapText)
+                ToggleRow("Wrap notes column", "Longer **notes** use more lines too.", isOn: $wrapNotes).disabled(!wrapText).padding(.leading, 20)
+                ToggleRow("Friendly port names", "Shows 'SSH 22' instead of just '22'.", isOn: $friendlyPorts)
             }
             Section("Window") {
-                Toggle(isOn: $stayOnTop) {
-                    Text("Keep on top")
-                    Text("OtterScan stays above other apps' windows.")
-                }.onChange(of: stayOnTop) { applyStayOnTop() }
-                Toggle(isOn: $launchAtLogin) {
-                    Text("Launch at login")
-                    Text("Opens OtterScan when you log in to your Mac.")
-                }.onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
+                ToggleRow("Keep on top", "OtterScan stays above other apps' windows.", isOn: $stayOnTop).onChange(of: stayOnTop) { applyStayOnTop() }
+                ToggleRow("Launch at login", "Opens OtterScan when you log in to your Mac.", isOn: $launchAtLogin).onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
                 .onChange(of: launchAtLogin) {
                     guard launchAtLogin != (SMAppService.mainApp.status == .enabled) else { return }
                     do { if launchAtLogin { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
@@ -449,10 +475,7 @@ struct GeneralPrefs: View {
                 }
             }
             Section("Updates") {
-                Toggle(isOn: $autoUpdate) {
-                    Text("Check for updates automatically")
-                    Text("Notifies you when there's a new version of Otterscan.")
-                }
+                ToggleRow("Check for updates automatically", "Notifies you when there's a new version of Otterscan.", isOn: $autoUpdate)
                 LabeledContent("Version") {
                     HStack {
                         Text("\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))").foregroundStyle(.secondary)
@@ -496,19 +519,19 @@ struct NotificationPrefs: View {
     var body: some View {
         Form {
             Section {
-                Toggle(isOn: $ipChange) { Text("IP address changes"); Text("This Mac gets a new address, e.g. a new DHCP lease or another network.") }
+                ToggleRow("IP address changes", "This Mac gets a new address, e.g. a new DHCP lease or another network.", isOn: $ipChange)
             } header: {
                 InfoHeader("This Mac", "Checked every few seconds, even when no scan is running. Losing the connection and getting the same address back is not a change.")
             }
             Section {
-                Toggle(isOn: $knownJoin) { Text("Joins the network"); Text("A device you've seen before comes back.") }
-                Toggle(isOn: $knownLeave) { Text("Leaves the network"); Text("A device you've seen before stops answering.") }
+                ToggleRow("Joins the network", "A device you've seen before comes back.", isOn: $knownJoin)
+                ToggleRow("Leaves the network", "A device you've seen before stops answering.", isOn: $knownLeave)
             } header: {
                 InfoHeader("Known Devices", "A device OtterScan has seen on a previous scan, including earlier launches. Identified by MAC address, or IP.")
             }
             Section {
-                Toggle(isOn: $newJoin) { Text("Joins the network"); Text("A device OtterScan has never seen shows up.") }
-                Toggle(isOn: $newLeave) { Text("Leaves the network"); Text("A device that first showed up since OtterScan opened goes away.") }
+                ToggleRow("Joins the network", "A device OtterScan has never seen shows up.", isOn: $newJoin)
+                ToggleRow("Leaves the network", "A device that first showed up since OtterScan opened goes away.", isOn: $newLeave)
             } header: {
                 InfoHeader("New Devices", "A device OtterScan has never seen before. It stays new until you relaunch the app.")
             }
