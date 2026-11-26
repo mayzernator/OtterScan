@@ -74,8 +74,8 @@ func nsMenuItems(_ items: [MenuItem]) -> [NSMenuItem] {
 
 // Everything besides a row's own Device that changes how its cells look.
 struct Look: Equatable {
-    var prefs: TablePrefs, favourites: Set<String>, renaming: String?
-    init(_ m: ScanModel) { (prefs, favourites, renaming) = (m.prefs, m.favourites, m.renaming) }
+    var prefs: TablePrefs, favourites: Set<String>, renaming: String?, favouritePorts: Set<Int>
+    init(_ m: ScanModel) { (prefs, favourites, renaming, favouritePorts) = (m.prefs, m.favourites, m.renaming, m.favouritePorts) }
 }
 
 final class DeviceNSTable: NSTableView {
@@ -336,7 +336,7 @@ final class DeviceCell: NSTableCellView, NSTextFieldDelegate {
     static func text(_ d: Device, _ f: Field, _ look: Look, _ m: ScanModel) -> String {
         switch f {
         case .hostname: return m.title(d)
-        case .ports: return d.ports.map { look.prefs.friendlyPorts ? $0.label : String($0.port) }.joined(separator: ", ")
+        case .ports: return m.portsText(d.ports, friendly: look.prefs.friendlyPorts)
         default: return d.text(f)
         }
     }
@@ -348,6 +348,11 @@ final class DeviceCell: NSTableCellView, NSTextFieldDelegate {
         if waiting { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         label.isHidden = waiting
         label.stringValue = Self.text(d, field, look, m)
+        if field == .ports, label.stringValue.hasPrefix("★") {
+            let s = NSMutableAttributedString(string: label.stringValue, attributes: [.font: Self.font(field), .foregroundColor: NSColor.labelColor])
+            s.addAttribute(.foregroundColor, value: NSColor.systemYellow, range: NSRange(location: 0, length: 1))
+            label.attributedStringValue = s
+        }
         label.maximumNumberOfLines = wrap ? 0 : 1
         label.cell?.wraps = wrap
         label.lineBreakMode = wrap ? .byWordWrapping : .byTruncatingTail

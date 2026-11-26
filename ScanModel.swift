@@ -78,6 +78,7 @@ final class ScanModel: ObservableObject {
     @Published var newName = ""
     var names = UserDefaults.standard.dictionary(forKey: "names") as? [String: String] ?? [:]  // custom names, by Device.key
     @Published var favourites = Set(UserDefaults.standard.stringArray(forKey: "favourites") ?? [])
+    @Published var favouritePorts = Set((UserDefaults.standard.array(forKey: "favouritePorts") as? [Int]) ?? [])  // by port number, on every device
     @Published var notes = UserDefaults.standard.dictionary(forKey: "notes") as? [String: String] ?? [:]
     @Published var exposure: Exposure?
     @Published var exposureError: String?
@@ -173,7 +174,7 @@ final class ScanModel: ObservableObject {
                 + (d.vendor.isEmpty ? 0 : 8 + width(d.vendor, .systemFont(ofSize: 10)))
                 + (isFavourite(d) ? 22 : 0)
         case .ping: return 9
-        case .ports: return width(d.ports.map { String($0.port) }.joined(separator: ", "), mono)
+        case .ports: return width(portsText(d.ports, friendly: false), mono)
         default: return width(d.text(f), codeFields.contains(f) ? mono : body)
         }
     }
@@ -407,6 +408,18 @@ final class ScanModel: ObservableObject {
     func toggleFavourite(_ d: Device) {
         if favourites.remove(d.key) == nil { favourites.insert(d.key) }
         UserDefaults.standard.set(Array(favourites), forKey: "favourites")
+    }
+
+    func toggleFavouritePort(_ p: Int) {
+        if favouritePorts.remove(p) == nil { favouritePorts.insert(p) }
+        UserDefaults.standard.set(Array(favouritePorts), forKey: "favouritePorts")
+    }
+
+    // The Ports column's text: favourites first, a yellow star in front, then a " · " before the rest.
+    func portsText(_ ports: [Port], friendly: Bool) -> String {
+        let fav = ports.filter { favouritePorts.contains($0.port) }, rest = ports.filter { !favouritePorts.contains($0.port) }
+        func j(_ ps: [Port]) -> String { ps.map { friendly ? $0.label : String($0.port) }.joined(separator: ", ") }
+        return fav.isEmpty ? j(rest) : "★ " + j(fav) + (rest.isEmpty ? "" : " · " + j(rest))
     }
 
     @discardableResult
