@@ -414,7 +414,7 @@ struct GeneralPrefs: View {
                 }
                 Toggle(isOn: $autoDetails) {
                     Text("Open details on select")
-                    Text("Shows the details panel when you pick a device.")
+                    Text("Automatically shows the details panel when you pick a device.")
                 }
                 Toggle(isOn: $removeDashes) {
                     Text("Remove dashes from device names (on by default)")
@@ -422,15 +422,15 @@ struct GeneralPrefs: View {
                 }
                 Toggle(isOn: $wrapText) {
                     Text("Wrap text")
-                    Text("Long names and port lists use more lines instead of being cut off.")
+                    Text("Longer fields extend vertically (using more lines) instead of being cut off.")
                 }
                 Toggle(isOn: $wrapNotes) {
                     Text("Wrap notes column")
-                    Text("Long notes use more lines too.")
+                    Text("Longer **notes** use more lines too.")
                 }.disabled(!wrapText).padding(.leading, 20)
                 Toggle(isOn: $friendlyPorts) {
                     Text("Friendly port names")
-                    Text("Shows SSH 22 instead of just 22.")
+                    Text("Shows 'SSH 22' instead of just '22'.")
                 }
             }
             Section("Window") {
@@ -451,7 +451,7 @@ struct GeneralPrefs: View {
             Section("Updates") {
                 Toggle(isOn: $autoUpdate) {
                     Text("Check for updates automatically")
-                    Text("Looks once a day at launch and only speaks up when there's a new version.")
+                    Text("Notifies you when there's a new version of Otterscan.")
                 }
                 LabeledContent("Version") {
                     HStack {
