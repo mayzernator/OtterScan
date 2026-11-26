@@ -42,8 +42,31 @@ final class IPWatcher {
 
 enum ViewKind: String, CaseIterable { case devices, ports, exposed }
 
+// The Settings the main window shows. Kept on the model, not as @AppStorage in ContentView: SwiftUI refreshes
+// every @AppStorage view on any defaults write, so each Settings click re-rendered and re-measured the whole table.
+struct TablePrefs: Equatable {
+    var wrapText, wrapNotes, friendlyPorts, removeDashes: Bool, mode: String
+    static var current: TablePrefs {
+        let d = UserDefaults.standard
+        return TablePrefs(wrapText: d.bool(forKey: "wrapText"), wrapNotes: d.bool(forKey: "wrapNotes"), friendlyPorts: d.bool(forKey: "friendlyPorts"),
+                          removeDashes: d.bool(forKey: "removeDashes"), mode: d.string(forKey: "defaultMode") ?? "common")
+    }
+}
+
 final class ScanModel: ObservableObject {
     @Published var rows = [Device]()
+    @Published private(set) var prefs = TablePrefs.current
+    private var prefsObserver: Any?
+
+    init() {
+        prefsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            let new = TablePrefs.current
+            guard new != prefs else { return }  // most writes are other settings: publish nothing
+            if new.mode != prefs.mode { mode = Mode(rawValue: new.mode) ?? .common }  // the Settings picker applies live (Reactions rescans)
+            prefs = new
+        }
+    }
     @Published var selection: String?
     @Published var running = false
     @Published var live = UserDefaults.standard.bool(forKey: "defaultLive")
@@ -75,24 +98,6 @@ final class ScanModel: ObservableObject {
     @Published var showDetails = false
     @Published var addURLFor: String?
     @Published var newURL = ""
-    // Not @Published: the table reports every width change during a window resize, and each one would redraw the whole window.
-    private var columns: TableColumnCustomization<Device> = UserDefaults.standard.data(forKey: "columns")
-        .flatMap { try? JSONDecoder().decode(TableColumnCustomization<Device>.self, from: $0) } ?? TableColumnCustomization()
-    private var saveColumnsLater: DispatchWorkItem?
-
-    var columnsBinding: Binding<TableColumnCustomization<Device>> {
-        Binding(get: { self.columns }, set: { [self] new in
-            let shownChanged = Field.allCases.contains { new[visibility: $0.rawValue] != columns[visibility: $0.rawValue] }
-            columns = new
-            if shownChanged { objectWillChange.send() }
-            saveColumnsLater?.cancel()
-            let save = DispatchWorkItem { [self] in
-                if let data = try? JSONEncoder().encode(columns) { UserDefaults.standard.set(data, forKey: "columns") }
-            }
-            saveColumnsLater = save
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: save)
-        })
-    }
 
     private var stop: Stop?
     private var session = 0
@@ -101,12 +106,11 @@ final class ScanModel: ObservableObject {
     func device(_ ip: String?) -> Device? { rows.first { $0.ip == ip } }
     private func index(_ ip: String) -> Int? { rows.firstIndex { $0.ip == ip } }
 
-    // MARK: the table underneath SwiftUI's Table
+    // MARK: the device table (DeviceTable.swift)
 
     private weak var table: NSTableView?
     private var keyMonitor: Any?
     private var columnsFitted = false
-    var hasTable: Bool { table?.window != nil }
 
     func attach(_ t: NSTableView) {
         guard table !== t else { return }
@@ -138,7 +142,7 @@ final class ScanModel: ObservableObject {
     private var remeasureWork: DispatchWorkItem?
 
     private func remeasureRows() {
-        guard UserDefaults.standard.bool(forKey: "wrapText"), let t = table, t.numberOfRows > 0 else { return }  // unwrapped rows are one line already
+        guard prefs.wrapText, let t = table, t.numberOfRows > 0 else { return }  // unwrapped rows are one line already
         t.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<t.numberOfRows))
     }
 
@@ -146,6 +150,8 @@ final class ScanModel: ObservableObject {
     private func fitColumnsOnce() {
         guard !columnsFitted, let table, !rows.isEmpty, !running || done == total else { return }
         columnsFitted = true
+        table.beginUpdates()  // one row-width pass for all columns, not one per column
+        defer { table.endUpdates() }
         for c in table.tableColumns where !c.isHidden {
             guard let f = Field.allCases.first(where: { $0.title == c.title }) else { continue }
             let widest = rows.map { cellWidth($0, f) }.max() ?? 0
@@ -155,7 +161,7 @@ final class ScanModel: ObservableObject {
 
     // What the Device column shows; a custom name is shown exactly as typed.
     func title(_ d: Device) -> String {
-        d.hostname.isEmpty ? d.ip : displayName(d.hostname, removeDashes: UserDefaults.standard.bool(forKey: "removeDashes"))  // custom names too: older renames saved the raw "Name-x.local"
+        d.hostname.isEmpty ? d.ip : displayName(d.hostname, removeDashes: prefs.removeDashes)  // custom names too: older renames saved the raw "Name-x.local"
     }
 
     private func cellWidth(_ d: Device, _ f: Field) -> CGFloat {
@@ -245,13 +251,26 @@ final class ScanModel: ObservableObject {
                 let label = nets.map(\.description).joined(separator: ", ")  // also what tells one scanned network from another (passFinished)
                 DispatchQueue.main.async { if self?.session == id { self?.range = "Scan of \(label)" } }
                 try events(nets, mode, live: live, stop: stop, pause: pause) { e in
-                    DispatchQueue.main.async { self?.handle(e, mode, live, id) }
+                    DispatchQueue.main.async { self?.enqueue { self?.handle(e, mode, live, id) } }
                 }
             } catch {
                 end = "Error: \(error.localizedDescription)"
             }
-            DispatchQueue.main.async { if self?.session == id { self?.finish(end) } }
+            DispatchQueue.main.async { self?.flushEvents(); if self?.session == id { self?.finish(end) } }
         }
+    }
+
+    // A pass sends hundreds of events, and applying each alone re-rendered the whole table every time, which
+    // starved window resizing and Settings. Apply them in batches instead, at most about 10 times a second.
+    private var pendingEvents = [() -> Void]()
+    private func enqueue(_ apply: @escaping () -> Void) {
+        pendingEvents.append(apply)
+        if pendingEvents.count == 1 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.flushEvents() } }
+    }
+    private func flushEvents() {
+        let batch = pendingEvents
+        pendingEvents = []
+        batch.forEach { $0() }
     }
 
     private func finish(_ text: String) {

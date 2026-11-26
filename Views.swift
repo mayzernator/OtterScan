@@ -58,14 +58,10 @@ final class EndField: NSTextField {
     }
 }
 
-// The note box for the table (blank) and the details panel (with a prompt).
-struct NoteEditor: NSViewRepresentable {
-    @Binding var text: String
-    var prompt = ""
-    var wrap = false  // table only: grow to more lines instead of truncating
-
-    func makeNSView(context: Context) -> EndField {
-        let f = EndField(string: text)
+extension EndField {
+    // The note box for the table (blank) and the details panel (with a prompt).
+    static func noteBox(prompt: String) -> EndField {
+        let f = EndField(string: "")
         f.mouseOnly = true
         f.isBordered = false
         f.drawsBackground = false
@@ -77,6 +73,24 @@ struct NoteEditor: NSViewRepresentable {
         f.placeholderAttributedString = NSAttributedString(string: prompt, attributes: [
             .foregroundColor: NSColor.tertiaryLabelColor, .font: NSFontManager.shared.convert(.systemFont(ofSize: NSFont.systemFontSize), toHaveTrait: .italicFontMask),
             .paragraphStyle: { let p = NSMutableParagraphStyle(); p.alignment = .right; return p }()])
+        return f
+    }
+
+    // table only: grow to more lines instead of truncating
+    func setWraps(_ wrap: Bool) {
+        cell?.wraps = wrap
+        cell?.isScrollable = !wrap
+        lineBreakMode = wrap ? .byWordWrapping : .byTruncatingTail
+    }
+}
+
+struct NoteEditor: NSViewRepresentable {
+    @Binding var text: String
+    var prompt = ""
+
+    func makeNSView(context: Context) -> EndField {
+        let f = EndField.noteBox(prompt: prompt)
+        f.stringValue = text
         f.delegate = context.coordinator
         return f
     }
@@ -84,14 +98,6 @@ struct NoteEditor: NSViewRepresentable {
     func updateNSView(_ f: EndField, context: Context) {
         context.coordinator.parent = self
         if f.currentEditor() == nil && f.stringValue != text { f.stringValue = text }
-        f.cell?.wraps = wrap
-        f.cell?.isScrollable = !wrap
-        f.lineBreakMode = wrap ? .byWordWrapping : .byTruncatingTail
-    }
-    // A wrapping field reports its height for the column width so the row grows to fit.
-    func sizeThatFits(_ p: ProposedViewSize, nsView f: EndField, context: Context) -> CGSize? {
-        guard wrap, let w = p.width, w.isFinite, let cell = f.cell else { return nil }
-        return CGSize(width: w, height: cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: w, height: .greatestFiniteMagnitude)).height)
     }
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -99,48 +105,6 @@ struct NoteEditor: NSViewRepresentable {
         var parent: NoteEditor
         init(_ p: NoteEditor) { parent = p }
         func controlTextDidChange(_ n: Notification) { parent.text = (n.object as? NSTextField)?.stringValue ?? parent.text }
-    }
-}
-
-// A text box that sits over the name in the Device column: Return or clicking away saves, Escape cancels.
-// AppKit rather than SwiftUI's TextField, which can't take focus and select its text on appearing without @FocusState.
-struct NameEditor: NSViewRepresentable {
-    @Binding var text: String
-    var done: (Bool) -> Void  // true to save
-
-    func makeNSView(context: Context) -> NSTextField {
-        let f = EndField(string: text)
-        f.isBordered = false  // plain text in the cell's own font, like renaming in Finder, so the row doesn't grow
-        f.drawsBackground = true
-        f.backgroundColor = .textBackgroundColor
-        f.focusRingType = .exterior
-        f.font = .systemFont(ofSize: NSFont.systemFontSize)
-        f.lineBreakMode = .byTruncatingTail
-        f.delegate = context.coordinator
-        f.focusOnShow = true  // EndField puts the caret at the end
-        return f
-    }
-
-    func updateNSView(_ f: NSTextField, context: Context) { context.coordinator.parent = self }
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    final class Coordinator: NSObject, NSTextFieldDelegate {
-        var parent: NameEditor
-        private var finished = false
-        init(_ p: NameEditor) { parent = p }
-
-        private func finish(_ save: Bool) {
-            guard !finished else { return }
-            finished = true
-            DispatchQueue.main.async { self.parent.done(save) }  // not mid-update
-        }
-
-        func controlTextDidChange(_ n: Notification) { parent.text = (n.object as? NSTextField)?.stringValue ?? parent.text }
-        func controlTextDidEndEditing(_ n: Notification) { finish(true) }
-        func control(_ c: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
-            if sel == #selector(NSResponder.cancelOperation(_:)) { finish(false); return true }
-            return false  // Return ends editing normally, which saves
-        }
     }
 }
 
@@ -287,40 +251,9 @@ struct FilterMenu: View, Equatable {
             Label("Filters", systemImage: filters == Filters() ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
         }
         .menuIndicator(.hidden)  // a plain icon button, no chevron
+        .buttonBorderShape(.circle)  // on its own in the toolbar the glass background was an oval
         .help("Filter the list")
     }
-}
-
-// shortcut: SwiftUI's Table has no API for column widths or keyboard focus, so this finds the NSTableView behind it; replace if Table gains one.
-final class TableFinder: NSView {
-    var found: ((NSTableView) -> Void)?
-
-    func look() {
-        DispatchQueue.main.async { [weak self] in
-            if let root = self?.window?.contentView, let t = Self.deviceTable(in: root) { self?.found?(t) }
-        }
-    }
-
-    override func viewDidMoveToWindow() { look() }
-
-    // By its column titles: the details pane's Form can be a table too.
-    static func deviceTable(in v: NSView) -> NSTableView? {
-        if let t = v as? NSTableView, t.tableColumns.contains(where: { c in Field.allCases.contains { $0.title == c.title } }) { return t }
-        for s in v.subviews { if let t = deviceTable(in: s) { return t } }
-        return nil
-    }
-}
-
-struct TableAccess: NSViewRepresentable {
-    let m: ScanModel
-
-    func makeNSView(context: Context) -> TableFinder {
-        let v = TableFinder()
-        v.found = { [weak m] in m?.attach($0) }
-        return v
-    }
-
-    func updateNSView(_ v: TableFinder, context: Context) { if !m.hasTable { v.look() } }
 }
 
 struct ToolTip: NSViewRepresentable {  // AppKit tooltip: SwiftUI's .help didn't show over a disabled Form row
@@ -470,7 +403,10 @@ struct GeneralPrefs: View {
                 ToggleRow("Open details on select", "Automatically shows the details panel when you pick a device.", isOn: $autoDetails)
                 ToggleRow("Remove dashes from device names (on by default)", "Shows 'Mays MacBook Pro' instead of 'Mays-MacBook-Pro'. Domain names keep their dashes.", isOn: $removeDashes)
                 ToggleRow("Wrap text", "Longer fields extend vertically (using more lines) instead of being cut off.", isOn: $wrapText)
-                ToggleRow("Wrap notes column", "Longer **notes** use more lines too.", isOn: $wrapNotes).disabled(!wrapText).padding(.leading, 20)
+                ToggleRow("Wrap notes column", "Longer **notes** use more lines too.", isOn: $wrapNotes)
+                    .foregroundStyle(wrapText ? Color.primary : Color(nsColor: .disabledControlTextColor))  // Form doesn't grey a disabled row's title
+                    .disabled(!wrapText).padding(.leading, 20)
+                    .overlay { if !wrapText { ToolTip(text: "Turn on Wrap text to use this.") } }
                 ToggleRow("Friendly port names", "Shows 'SSH 22' instead of just '22'.", isOn: $friendlyPorts)
             }
             Section("Window") {
@@ -689,11 +625,6 @@ struct Reactions: ViewModifier {
 
 struct ContentView: View {
     @EnvironmentObject var m: ScanModel
-    @AppStorage("defaultMode") var portCheck = "common"
-    @AppStorage("wrapText") var wrapText = false
-    @AppStorage("wrapNotes") var wrapNotes = false
-    @AppStorage("friendlyPorts") var friendlyPorts = false
-    @AppStorage("removeDashes") var removeDashes = true  // not read here: observing it makes the table redraw when the Settings toggle flips
     var shown: [Device] {
         let q = m.search.trimmingCharacters(in: .whitespaces).lowercased()
         var r = m.rows.filter { d in
@@ -711,14 +642,13 @@ struct ContentView: View {
     // Split in two: one long chain of modifiers is more than the type checker will take.
     var body: some View {
         chrome.modifier(Reactions(m: m))
-            .onChange(of: portCheck) { m.mode = Mode(rawValue: portCheck) ?? .common }  // the Settings picker applies live (Reactions rescans)
     }
 
     var chrome: some View {
         let rows = shown
         return Group {
             switch m.view {
-            case .devices: table(rows)
+            case .devices: DeviceTable(m: m, rows: rows)
             case .ports: cards(rows.filter { !$0.ports.isEmpty })
             case .exposed: exposedView
             }
@@ -727,6 +657,7 @@ struct ContentView: View {
         .inspector(isPresented: $m.showDetails) {
             details.inspectorColumnWidth(min: 280, ideal: 330, max: 460)
         }
+        .transaction(value: m.showDetails) { $0.animation = nil }
         .toolbar { toolbar }
         .onReceive(NotificationCenter.default.publisher(for: .printList)) { _ in
             printList(m.view == .ports ? shown.filter { !$0.ports.isEmpty } : shown)
@@ -838,63 +769,8 @@ struct ContentView: View {
 
     // MARK: devices
 
-    func table(_ rows: [Device]) -> some View {
-        Table(of: Device.self, selection: $m.selection, sortOrder: $m.sortOrder, columnCustomization: m.columnsBinding) {
-            TableColumnForEach(Field.allCases) { f in
-                // min ≈ the "MAC" header plus padding and sort arrow; a column dragged to ~0 width crashed AppKit (2026-11-14). SwiftUI keeps this, unlike NSTableColumn.minWidth.
-                TableColumn(f.title, sortUsing: FieldOrder(f)) { d in cell(d, f) }.width(min: 60)
-                    .customizationID(f.rawValue)
-                    .defaultVisibility(startHidden.contains(f) ? .hidden : .automatic)
-            }
-        } rows: {
-            ForEach(rows) { TableRow($0) }
-        }
-        .contextMenu(forSelectionType: String.self) { ids in menu(ids) }
-        .background(TableAccess(m: m))
-        .id("\(wrapText)-\(wrapNotes)")  // rows keep their old heights when wrapping changes, so rebuild the table
-    }
-
-    // The table's note box is blank; the details panel passes a prompt.
-    func noteField(_ d: Device, prompt: String = "", wrap: Bool = false) -> some View {
-        NoteEditor(text: Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) }), prompt: prompt, wrap: wrap)
-    }
-
-    @ViewBuilder func cell(_ d: Device, _ f: Field) -> some View {
-        if f == .hostname && m.renaming == d.ip {
-            HStack(spacing: 8) {  // same icon and spacing as the normal cell, so the box sits exactly over the name
-                Image(systemName: symbol(d.kind)).foregroundStyle(.tint).frame(width: 18).accessibilityHidden(true)
-                NameEditor(text: $m.newName) { save in
-                    if save { m.rename(d.ip, to: m.newName) }
-                    m.renaming = nil
-                }
-                .frame(height: 16)
-            }
-        } else if f == .hostname {
-            HStack(spacing: 8) {
-                Image(systemName: symbol(d.kind)).foregroundStyle(.tint).frame(width: 18).accessibilityLabel(d.kind.isEmpty ? "device" : d.kind)
-                if d.wait.contains(.hostname) && d.hostname.isEmpty {
-                    Spinner()
-                } else {
-                    Text(m.title(d)).lineLimit(wrapText ? nil : 1).fixedSize(horizontal: false, vertical: true)  // wrap onto more lines, never squeeze or shift the icon
-                    if !d.vendor.isEmpty { Text(d.vendor).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                }
-                if m.isFavourite(d) { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Favourite") }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)  // icon stays flush left even when the name wraps
-            .contentShape(Rectangle()).onTapGesture(count: 2) { m.startRename(d.ip) }
-        } else if f == .note {
-            noteField(d, wrap: wrapText && wrapNotes)
-        } else if d.wait.contains(f) && d.text(f).isEmpty {
-            Spinner()
-        } else if f == .ping {
-            Circle().fill(d.ping ? Color.green : Color.red).frame(width: 9, height: 9)
-                .accessibilityLabel(d.ping ? "Online" : "No ping reply")
-        } else if f == .ports {
-            Text(d.ports.map { friendlyPorts ? $0.label : String($0.port) }.joined(separator: ", ")).font(.system(.callout, design: .monospaced))
-                .lineLimit(wrapText ? nil : 1).help(d.text(.ports))
-        } else {
-            Text(d.text(f)).font(codeFields.contains(f) ? .system(.callout, design: .monospaced) : .body).lineLimit(wrapText ? nil : 1)
-        }
+    func noteField(_ d: Device, prompt: String) -> some View {
+        NoteEditor(text: Binding(get: { m.device(d.ip)?.note ?? "" }, set: { m.setNote(d, $0) }), prompt: prompt)
     }
 
     // One lazy stack per column, so cards sit directly under each other whatever their heights.
@@ -982,31 +858,7 @@ struct ContentView: View {
 
     // MARK: right-click menu
 
-    @ViewBuilder func menu(_ ids: Set<String>) -> some View {
-        if let ip = ids.first, let d = m.device(ip) {
-            Button(m.isFavourite(d) ? "Remove from Favourites" : "Favourite") { m.toggleFavourite(d) }
-            Button("Edit Name") { m.startRename(ip) }
-            Button("Reset Name") { m.resetName(ip) }.disabled(!m.hasCustomName(d))
-            Divider()
-            Menu("Open in Browser") {
-                Button("Add New URL…") { m.newURL = "http://\(ip):"; m.addURLFor = ip }
-                Divider()
-                ForEach(m.links(d), id: \.self) { u in
-                    Button(u) { m.openInSafari(u) }
-                }
-            }
-            Divider()
-            if !d.portsChecked || d.ports.contains(where: { $0.port == 22 }) { Button("Connect via SSH") { m.openSSH(d.ip) } }
-            Button("Ping") { m.runInTerminal("ping", d.ip) }
-            Button("Traceroute") { m.runInTerminal("traceroute", d.ip) }
-            Divider()
-            Button("Copy") { m.copy(Field.allCases.map { d.text($0) }.joined(separator: "\t")) }
-            ForEach([("Copy IP Address", d.ip), ("Copy MAC Address", d.mac), ("Copy Hostname", d.hostname), ("Copy Vendor", d.vendor)]
-                .filter { !$0.1.isEmpty && $0.1 != "?" }, id: \.0) { item in
-                Button(item.0) { m.copy(item.1) }
-            }
-        }
-    }
+    func menu(_ ids: Set<String>) -> some View { MenuItems(items: ids.first.map(m.menuItems) ?? []) }
 
     // MARK: details panel
 

@@ -107,7 +107,7 @@ struct Found {
     init(_ ip: String, _ mac: String, _ ping: Bool, _ v6: V6 = V6()) { (self.ip, self.mac, self.ping, self.v6) = (ip, mac, ping, v6) }
 }
 
-struct Device: Identifiable {
+struct Device: Identifiable, Equatable {
     var ip: String, mac: String, ping: Bool, ipv6Local: String, ipv6Global: String, vendor: String
     var hostname = "", host = "", dns = "", mdns = "", smb = "", smbDomain = "", model = "", note = ""
     var ports = [Port](), identification = "", kind = ""
