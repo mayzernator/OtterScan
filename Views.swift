@@ -584,16 +584,20 @@ let KINDS_SHOWN: [(String, String?)] = [
     ("Printers", "printer"), ("Routers", "router"), ("Servers", "server"), ("Unknown", "")]
 
 struct PortChips: View {
+    @ObservedObject var m: ScanModel
     let ports: [Port]
     var body: some View {
         FlowLayout {
             ForEach(ports) { p in
+                let fav = m.favouritePorts.contains(p.port)
                 HStack(spacing: 6) {
+                    if fav { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Favourite") }
                     if p.name != "Unknown" { Text(p.name) }
-                    Text(String(p.port)).font(.system(.caption, design: .monospaced).weight(.semibold)).foregroundStyle(.tint)
+                    Text(String(p.port)).font(.system(.caption, design: .monospaced).weight(.semibold)).foregroundStyle(fav ? Color.primary : Color.accentColor)
                 }
                 .padding(.horizontal, 8).padding(.vertical, 2)
-                .background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                .background(fav ? Color.yellow.opacity(0.3) : Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                .contextMenu { Button(fav ? "Remove Port from Favourites" : "Favourite Port") { m.toggleFavouritePort(p.port) } }
             }
         }
     }
@@ -817,7 +821,7 @@ struct ContentView: View {
                 Text([d.ip, d.vendor, "\(d.ports.count) open port\(d.ports.count == 1 ? "" : "s")"].filter { !$0.isEmpty }.joined(separator: " · "))
                     .font(.callout).foregroundStyle(.secondary)
             }
-            PortChips(ports: d.ports)
+            PortChips(m: m, ports: d.ports)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -894,7 +898,7 @@ struct ContentView: View {
                         if d.wait.contains(.ports) && d.ports.isEmpty {
                             Spinner()
                         } else if !d.ports.isEmpty {
-                            PortChips(ports: d.ports)
+                            PortChips(m: m, ports: d.ports)
                         } else {
                             Text(d.portsChecked ? "None found" : "Not checked").foregroundStyle(.secondary)
                         }
