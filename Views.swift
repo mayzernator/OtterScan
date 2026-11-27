@@ -597,6 +597,9 @@ struct PortChips: View {
                 }
                 .padding(.horizontal, 8).padding(.vertical, 2)
                 .background(fav ? Color.yellow.opacity(0.3) : Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                .textSelection(.disabled)  // the panes enable selection; a click here favourites instead
+                .contentShape(RoundedRectangle(cornerRadius: 6))
+                .onTapGesture { m.toggleFavouritePort(p.port) }
                 .contextMenu { Button(fav ? "Remove Port from Favourites" : "Favourite Port") { m.toggleFavouritePort(p.port) } }
             }
         }
